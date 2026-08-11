@@ -9,33 +9,32 @@ import {
   Dimensions,
   Platform,
   ScrollView,
+  SafeAreaView,
+  StatusBar
 } from 'react-native';
 import { requestPermissions, subscribeToCalls, answerCall, enableSpeakerphone } from '../services/CallManager';
-import { startConversation, stopConversation, setApiKey } from '../services/AiService';
+import { startConversation, stopConversation } from '../services/AiService';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 const COLORS = {
-  bg: '#0A0E1A',
-  card: '#131829',
-  cardBorder: '#1E2540',
-  accent: '#00D4AA',
-  accentDim: '#00A88A',
-  danger: '#FF4757',
-  warning: '#FFA502',
-  text: '#EAECF0',
-  textDim: '#6B7280',
-  purple: '#8B5CF6',
-  blue: '#3B82F6',
+  bg: '#030610',
+  glassBg: 'rgba(20, 30, 60, 0.4)',
+  glassBorder: 'rgba(0, 240, 255, 0.2)',
+  neonCyan: '#00F0FF',
+  neonBlue: '#0A74DA',
+  neonRed: '#FF2A2A',
+  text: '#FFFFFF',
+  textDim: 'rgba(255, 255, 255, 0.6)',
 };
 
 const PERM_LABELS = {
-  READ_PHONE_STATE: { icon: '📱', label: 'Phone State' },
-  ANSWER_PHONE_CALLS: { icon: '📞', label: 'Answer Calls' },
-  RECORD_AUDIO: { icon: '🎙️', label: 'Microphone' },
-  CALL_PHONE: { icon: '📲', label: 'Make Calls' },
-  READ_CALL_LOG: { icon: '📋', label: 'Call Log' },
-  READ_PHONE_NUMBERS: { icon: '🔢', label: 'Phone Numbers' },
+  READ_PHONE_STATE: 'Phone State',
+  ANSWER_PHONE_CALLS: 'Answer Calls',
+  RECORD_AUDIO: 'Microphone',
+  CALL_PHONE: 'Make Calls',
+  READ_CALL_LOG: 'Call Log',
+  READ_PHONE_NUMBERS: 'Phone Numbers',
 };
 
 export default function HomeScreen() {
@@ -45,82 +44,65 @@ export default function HomeScreen() {
   const [callStatus, setCallStatus] = useState('idle');
   const [callerId, setCallerId] = useState('');
   const [callDuration, setCallDuration] = useState(0);
-  const [callLog, setCallLog] = useState([]);
   const [conversation, setConversation] = useState([]);
-  const [apiKey, setApiKeyValue] = useState('');
 
   // Animations
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  const glowAnim = useRef(new Animated.Value(0.3)).current;
-  const ringAnim = useRef(new Animated.Value(0)).current;
-  const fadeIn = useRef(new Animated.Value(0)).current;
+  const rotationAnim = useRef(new Animated.Value(0)).current;
+  const slideUpAnim = useRef(new Animated.Value(height)).current;
+  const fadeInAnim = useRef(new Animated.Value(0)).current;
 
+  // Initial Fade In
   useEffect(() => {
-    Animated.timing(fadeIn, {
+    Animated.timing(fadeInAnim, {
       toValue: 1,
-      duration: 800,
+      duration: 1000,
       useNativeDriver: true,
     }).start();
   }, []);
 
-  // Pulse animation
+  // Orb Animations (Pulse and Rotate)
   useEffect(() => {
+    let pulse, rotate;
     if (aiActive) {
-      const pulse = Animated.loop(
+      pulse = Animated.loop(
         Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 1.15,
-            duration: 1200,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 1,
-            duration: 1200,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
+          Animated.timing(pulseAnim, { toValue: 1.3, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
         ])
       );
-      const glow = Animated.loop(
-        Animated.sequence([
-          Animated.timing(glowAnim, {
-            toValue: 1,
-            duration: 1200,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(glowAnim, {
-            toValue: 0.3,
-            duration: 1200,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-        ])
+      rotate = Animated.loop(
+        Animated.timing(rotationAnim, {
+          toValue: 1,
+          duration: 10000,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        })
       );
       pulse.start();
-      glow.start();
-      return () => { pulse.stop(); glow.stop(); };
+      rotate.start();
     } else {
-      pulseAnim.setValue(1);
-      glowAnim.setValue(0.3);
+      Animated.spring(pulseAnim, { toValue: 1, useNativeDriver: true }).start();
+      rotationAnim.setValue(0);
     }
+    return () => { if(pulse) pulse.stop(); if(rotate) rotate.stop(); };
   }, [aiActive]);
 
-  // Ring animation
+  // Bottom Sheet Slide Up on Call
   useEffect(() => {
-    if (callStatus === 'ringing') {
-      const ring = Animated.loop(
-        Animated.sequence([
-          Animated.timing(ringAnim, { toValue: 1, duration: 300, easing: Easing.linear, useNativeDriver: true }),
-          Animated.timing(ringAnim, { toValue: -1, duration: 300, easing: Easing.linear, useNativeDriver: true }),
-          Animated.timing(ringAnim, { toValue: 0, duration: 300, easing: Easing.linear, useNativeDriver: true }),
-        ])
-      );
-      ring.start();
-      return () => ring.stop();
+    if (callStatus !== 'idle') {
+      Animated.spring(slideUpAnim, {
+        toValue: 0,
+        friction: 8,
+        tension: 40,
+        useNativeDriver: true,
+      }).start();
     } else {
-      ringAnim.setValue(0);
+      Animated.timing(slideUpAnim, {
+        toValue: height,
+        duration: 400,
+        useNativeDriver: true,
+      }).start();
     }
   }, [callStatus]);
 
@@ -155,17 +137,11 @@ export default function HomeScreen() {
           setTimeout(() => {
             answerCall();
             enableSpeakerphone(true);
-          }, 1500); // 1.5 second delay before picking up
+          }, 1500);
         }
       },
       () => { setCallStatus('active'); },
       () => {
-        if (callerId) {
-          setCallLog((prev) => [
-            { number: callerId, time: new Date().toLocaleTimeString(), duration: callDuration },
-            ...prev.slice(0, 9),
-          ]);
-        }
         setCallStatus('idle');
         setCallerId('');
         setCallDuration(0);
@@ -194,167 +170,122 @@ export default function HomeScreen() {
     return `${m}:${s}`;
   };
 
-  const getStatusText = () => {
-    switch (callStatus) {
-      case 'ringing': return 'Incoming Call...';
-      case 'active': return 'AI Handling Call';
-      default: return aiActive ? 'Listening for Calls' : 'AI is Off';
-    }
-  };
+  const spin = rotationAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg']
+  });
+  
+  const reverseSpin = rotationAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['360deg', '0deg']
+  });
 
-  const getStatusColor = () => {
-    switch (callStatus) {
-      case 'ringing': return COLORS.warning;
-      case 'active': return COLORS.accent;
-      default: return aiActive ? COLORS.accent : COLORS.textDim;
-    }
+  const getOrbColor = () => {
+    if (callStatus === 'ringing') return COLORS.neonRed;
+    if (callStatus === 'active') return COLORS.neonCyan;
+    return aiActive ? COLORS.neonBlue : '#333333';
   };
-
-  const permEntries = Object.keys(permResults);
-  const grantedCount = permEntries.filter((k) => permResults[k]).length;
 
   return (
-    <Animated.View style={[styles.container, { opacity: fadeIn }]}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.bg} />
+      
+      {/* Background Decor */}
+      <View style={styles.bgDecorTop} />
+      <View style={styles.bgDecorBottom} />
+
+      <Animated.View style={[styles.mainContent, { opacity: fadeInAnim }]}>
+        
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.logo}>⚡ AI Caller</Text>
-          <TouchableOpacity style={styles.permBadge} onPress={handlePermissions}>
-            <View style={[styles.permDot, { backgroundColor: allPermsGranted ? COLORS.accent : COLORS.danger }]} />
-            <Text style={styles.permText}>
-              {permEntries.length > 0 ? `${grantedCount}/${permEntries.length} Granted` : 'No Permissions'}
-            </Text>
-          </TouchableOpacity>
+          <Text style={styles.title}>J.A.R.V.I.S</Text>
+          <Text style={styles.subtitle}>Autonomous Call Handler</Text>
         </View>
 
-        {/* Status Bar */}
-        <View style={[styles.statusBar, { borderColor: getStatusColor() + '40' }]}>
-          <View style={[styles.statusDot, { backgroundColor: getStatusColor() }]} />
-          <Text style={[styles.statusText, { color: getStatusColor() }]}>{getStatusText()}</Text>
-          {callStatus === 'active' && (
-            <Text style={styles.timer}>{formatDuration(callDuration)}</Text>
-          )}
-        </View>
-
-        {/* AI Orb */}
-        <View style={styles.orbContainer}>
+        {/* Central Orb / AI Core */}
+        <View style={styles.coreContainer}>
           {aiActive && (
-            <>
-              <Animated.View style={[styles.glowRing, styles.glowRing3, { opacity: glowAnim, transform: [{ scale: Animated.multiply(pulseAnim, 1.4) }] }]} />
-              <Animated.View style={[styles.glowRing, styles.glowRing2, { opacity: glowAnim, transform: [{ scale: Animated.multiply(pulseAnim, 1.2) }] }]} />
-              <Animated.View style={[styles.glowRing, styles.glowRing1, { opacity: Animated.multiply(glowAnim, 1.5), transform: [{ scale: pulseAnim }] }]} />
-            </>
+            <Animated.View style={[styles.halo, { borderColor: getOrbColor(), transform: [{ scale: pulseAnim }, { rotate: spin }] }]} />
           )}
-          <Animated.View style={{ transform: [{ scale: aiActive ? pulseAnim : 1 }] }}>
-            <TouchableOpacity activeOpacity={0.8} onPress={toggleAI} style={[styles.orbButton, aiActive && styles.orbButtonActive]}>
-              <Text style={styles.orbIcon}>{aiActive ? '🤖' : '⏸️'}</Text>
-              <Text style={[styles.orbLabel, aiActive && styles.orbLabelActive]}>
-                {aiActive ? 'AI Active' : 'Tap to Start'}
+          {aiActive && (
+            <Animated.View style={[styles.haloOuter, { borderColor: getOrbColor(), transform: [{ scale: Animated.multiply(pulseAnim, 1.2) }, { rotate: reverseSpin }] }]} />
+          )}
+          
+          <TouchableOpacity activeOpacity={0.9} onPress={toggleAI} style={styles.coreButtonContainer}>
+            <Animated.View style={[styles.coreButton, { backgroundColor: aiActive ? getOrbColor() + '20' : '#111', borderColor: getOrbColor() }]}>
+              <Text style={styles.coreIcon}>{aiActive ? '🎙️' : 'POWER'}</Text>
+              <Text style={[styles.coreText, { color: aiActive ? COLORS.neonCyan : COLORS.textDim }]}>
+                {aiActive ? 'SYSTEM ONLINE' : 'OFFLINE'}
               </Text>
-            </TouchableOpacity>
-          </Animated.View>
-        </View>
-
-        {/* Caller Info */}
-        {callStatus !== 'idle' && (
-          <View style={[styles.callerCard, { borderColor: callStatus === 'active' ? COLORS.accent + '40' : COLORS.warning + '40' }]}>
-            <Text style={styles.callerIcon}>📞</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.callerNumber}>{callerId || 'Unknown'}</Text>
-              <Text style={styles.callerStatus}>
-                {callStatus === 'ringing' ? 'Ringing... AI will answer' : 'Connected • AI Speaking'}
-              </Text>
-            </View>
-            {callStatus === 'active' && <Text style={styles.callerTimer}>{formatDuration(callDuration)}</Text>}
-          </View>
-        )}
-
-        {/* Permissions Detail */}
-        {permEntries.length > 0 && (
-          <View style={styles.permSection}>
-            <Text style={styles.sectionTitle}>📋 Permissions</Text>
-            <View style={styles.permGrid}>
-              {permEntries.map((key) => {
-                const info = PERM_LABELS[key] || { icon: '🔒', label: key };
-                const granted = permResults[key];
-                return (
-                  <View key={key} style={[styles.permItem, { borderColor: granted ? COLORS.accent + '30' : COLORS.danger + '30' }]}>
-                    <Text style={styles.permItemIcon}>{info.icon}</Text>
-                    <Text style={styles.permItemLabel}>{info.label}</Text>
-                    <Text style={[styles.permItemStatus, { color: granted ? COLORS.accent : COLORS.danger }]}>
-                      {granted ? '✓' : '✗'}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-        )}
-
-        {/* AI Conversation History */}
-        {callStatus === 'active' && conversation.length > 0 && (
-          <View style={styles.convoSection}>
-            <Text style={styles.sectionTitle}>💬 Live Conversation</Text>
-            <View style={styles.convoBox}>
-              {conversation.map((msg, index) => (
-                <View key={index} style={[styles.msgBubble, msg.sender === 'AI' ? styles.msgAi : styles.msgSystem]}>
-                  <Text style={styles.msgText}>
-                    <Text style={{fontWeight: 'bold'}}>{msg.sender}: </Text>
-                    {msg.text}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* Features Grid */}
-        <Text style={styles.sectionTitle}>🚀 Features</Text>
-        <View style={styles.featuresGrid}>
-          <View style={styles.featureCard}>
-            <Text style={styles.featureIcon}>🎙️</Text>
-            <Text style={styles.featureTitle}>Auto Answer</Text>
-            <Text style={styles.featureDesc}>Picks up calls automatically</Text>
-          </View>
-          <View style={styles.featureCard}>
-            <Text style={styles.featureIcon}>🔊</Text>
-            <Text style={styles.featureTitle}>Speaker Mode</Text>
-            <Text style={styles.featureDesc}>Enables loudspeaker for AI</Text>
-          </View>
-          <View style={styles.featureCard}>
-            <Text style={styles.featureIcon}>🧠</Text>
-            <Text style={styles.featureTitle}>AI Response</Text>
-            <Text style={styles.featureDesc}>Talks naturally with caller</Text>
-          </View>
-          <View style={styles.featureCard}>
-            <Text style={styles.featureIcon}>📝</Text>
-            <Text style={styles.featureTitle}>Call Logs</Text>
-            <Text style={styles.featureDesc}>Records all conversations</Text>
-          </View>
-        </View>
-
-        {/* Recent Calls */}
-        {callLog.length > 0 && (
-          <View style={styles.recentSection}>
-            <Text style={styles.sectionTitle}>📞 Recent AI Calls</Text>
-            {callLog.map((log, index) => (
-              <View key={index} style={styles.logItem}>
-                <Text style={styles.logNumber}>{log.number}</Text>
-                <Text style={styles.logTime}>{log.time} • {formatDuration(log.duration)}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* Permission Button */}
-        {!allPermsGranted && (
-          <TouchableOpacity style={styles.permButton} onPress={handlePermissions}>
-            <Text style={styles.permButtonText}>🔐 Grant All Permissions</Text>
-            <Text style={styles.permButtonSub}>Phone, Microphone, Call Log & more</Text>
+            </Animated.View>
           </TouchableOpacity>
+        </View>
+
+        {/* Permissions / Status Info (When Idle) */}
+        {callStatus === 'idle' && (
+          <View style={styles.dashboardSection}>
+            <View style={styles.glassCard}>
+              <Text style={styles.cardTitle}>SYSTEM DIAGNOSTICS</Text>
+              <View style={styles.permGrid}>
+                {Object.keys(PERM_LABELS).map((key) => {
+                  const granted = permResults[key];
+                  return (
+                    <View key={key} style={styles.permRow}>
+                      <View style={[styles.statusIndicator, { backgroundColor: granted ? COLORS.neonCyan : COLORS.neonRed }]} />
+                      <Text style={styles.permText}>{PERM_LABELS[key]}</Text>
+                      <Text style={[styles.permStatusText, { color: granted ? COLORS.neonCyan : COLORS.neonRed }]}>
+                        {granted ? 'OK' : 'FAIL'}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+              
+              {!allPermsGranted && (
+                <TouchableOpacity style={styles.authButton} onPress={handlePermissions}>
+                  <Text style={styles.authButtonText}>INITIALIZE PERMISSIONS</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
         )}
-      </ScrollView>
-    </Animated.View>
+
+      </Animated.View>
+
+      {/* Call Active Bottom Sheet */}
+      <Animated.View style={[styles.bottomSheet, { transform: [{ translateY: slideUpAnim }] }]}>
+        <View style={styles.sheetHeader}>
+          <View style={styles.dragHandle} />
+        </View>
+        
+        <View style={styles.callInfoCard}>
+          <View>
+            <Text style={styles.callLabel}>INCOMING TRANSMISSION</Text>
+            <Text style={styles.callerIdText}>{callerId}</Text>
+          </View>
+          {callStatus === 'active' && (
+            <View style={styles.timerBadge}>
+              <Text style={styles.timerText}>{formatDuration(callDuration)}</Text>
+            </View>
+          )}
+        </View>
+
+        <ScrollView style={styles.transcriptContainer} contentContainerStyle={{ paddingBottom: 20 }} showsVerticalScrollIndicator={false}>
+          {conversation.map((msg, index) => (
+            <View key={index} style={[styles.msgWrapper, msg.sender === 'AI' ? styles.msgWrapperAi : styles.msgWrapperUser]}>
+              <View style={[styles.msgBubble, msg.sender === 'AI' ? styles.msgBubbleAi : styles.msgBubbleUser]}>
+                <Text style={styles.msgSender}>{msg.sender === 'AI' ? 'J.A.R.V.I.S' : 'CALLER'}</Text>
+                <Text style={styles.msgContent}>{msg.text}</Text>
+              </View>
+            </View>
+          ))}
+          {callStatus === 'ringing' && (
+            <Text style={styles.scanningText}>[ SCANNING INCOMING SIGNAL... ]</Text>
+          )}
+        </ScrollView>
+      </Animated.View>
+
+    </SafeAreaView>
   );
 }
 
@@ -362,230 +293,267 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.bg,
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'android' ? 50 : 60,
+  },
+  bgDecorTop: {
+    position: 'absolute',
+    top: -100,
+    right: -50,
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    backgroundColor: COLORS.neonBlue,
+    opacity: 0.1,
+    transform: [{ scaleY: 0.5 }],
+  },
+  bgDecorBottom: {
+    position: 'absolute',
+    bottom: -150,
+    left: -100,
+    width: 400,
+    height: 400,
+    borderRadius: 200,
+    backgroundColor: COLORS.neonCyan,
+    opacity: 0.05,
+  },
+  mainContent: {
+    flex: 1,
+    padding: 24,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    marginTop: 20,
     alignItems: 'center',
-    marginBottom: 20,
   },
-  logo: {
-    fontSize: 26,
-    fontWeight: '800',
+  title: {
+    fontSize: 32,
+    fontWeight: '900',
     color: COLORS.text,
-    letterSpacing: -0.5,
+    letterSpacing: 4,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
-  permBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.card,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-  },
-  permDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6,
-  },
-  permText: {
-    color: COLORS.textDim,
+  subtitle: {
     fontSize: 12,
-    fontWeight: '600',
-  },
-  statusBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.card,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    marginBottom: 24,
-  },
-  statusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: 10,
-  },
-  statusText: {
-    fontSize: 15,
-    fontWeight: '700',
-    flex: 1,
-  },
-  timer: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: COLORS.accent,
-    fontVariant: ['tabular-nums'],
-  },
-  orbContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 200,
-    marginBottom: 20,
-  },
-  glowRing: {
-    position: 'absolute',
-    borderRadius: 999,
-    borderWidth: 1.5,
-  },
-  glowRing1: { width: 160, height: 160, borderColor: COLORS.accent + '50' },
-  glowRing2: { width: 195, height: 195, borderColor: COLORS.accent + '30' },
-  glowRing3: { width: 230, height: 230, borderColor: COLORS.accent + '15' },
-  orbButton: {
-    width: 130,
-    height: 130,
-    borderRadius: 65,
-    backgroundColor: COLORS.card,
-    borderWidth: 2,
-    borderColor: COLORS.cardBorder,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 12,
-  },
-  orbButtonActive: {
-    borderColor: COLORS.accent,
-    backgroundColor: '#0D2A23',
-  },
-  orbIcon: { fontSize: 40, marginBottom: 4 },
-  orbLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.textDim,
+    color: COLORS.neonCyan,
+    letterSpacing: 2,
+    marginTop: 4,
     textTransform: 'uppercase',
-    letterSpacing: 1,
   },
-  orbLabelActive: { color: COLORS.accent },
-  callerCard: {
-    flexDirection: 'row',
+  coreContainer: {
     alignItems: 'center',
-    backgroundColor: COLORS.card,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    marginBottom: 20,
+    justifyContent: 'center',
+    height: 350,
+    marginTop: 20,
   },
-  callerIcon: { fontSize: 28, marginRight: 14 },
-  callerNumber: { fontSize: 18, fontWeight: '700', color: COLORS.text },
-  callerStatus: { fontSize: 13, color: COLORS.textDim, marginTop: 2 },
-  callerTimer: { fontSize: 18, fontWeight: '800', color: COLORS.accent },
-
-  // Permissions section
-  permSection: { marginBottom: 20 },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
+  halo: {
+    position: 'absolute',
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    opacity: 0.6,
+  },
+  haloOuter: {
+    position: 'absolute',
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    borderWidth: 1,
+    opacity: 0.3,
+  },
+  coreButtonContainer: {
+    zIndex: 10,
+  },
+  coreButton: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    borderWidth: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: COLORS.neonCyan,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 20,
+    elevation: 15,
+  },
+  coreIcon: {
+    fontSize: 28,
+    marginBottom: 8,
     color: COLORS.text,
-    marginBottom: 12,
+  },
+  coreText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+  },
+  dashboardSection: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    paddingBottom: 20,
+  },
+  glassCard: {
+    backgroundColor: COLORS.glassBg,
+    borderColor: COLORS.glassBorder,
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 20,
+  },
+  cardTitle: {
+    fontSize: 12,
+    color: COLORS.textDim,
+    letterSpacing: 2,
+    marginBottom: 16,
+    fontWeight: '700',
   },
   permGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    justifyContent: 'space-between',
   },
-  permItem: {
+  permRow: {
+    width: '48%',
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.card,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
+    marginBottom: 12,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    padding: 10,
+    borderRadius: 8,
+  },
+  statusIndicator: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 8,
+  },
+  permText: {
+    color: COLORS.text,
+    fontSize: 11,
+    flex: 1,
+  },
+  permStatusText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  authButton: {
+    marginTop: 16,
+    backgroundColor: 'rgba(0, 240, 255, 0.1)',
     borderWidth: 1,
-    gap: 6,
-  },
-  permItemIcon: { fontSize: 14 },
-  permItemLabel: { fontSize: 12, fontWeight: '600', color: COLORS.text },
-  permItemStatus: { fontSize: 14, fontWeight: '800' },
-
-  // Features
-  featuresGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 24,
-  },
-  featureCard: {
-    width: (width - 50) / 2,
-    backgroundColor: COLORS.card,
-    borderRadius: 14,
+    borderColor: COLORS.neonCyan,
     padding: 14,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderRadius: 10,
+    alignItems: 'center',
   },
-  featureIcon: { fontSize: 22, marginBottom: 6 },
-  featureTitle: { fontSize: 13, fontWeight: '700', color: COLORS.text, marginBottom: 2 },
-  featureDesc: { fontSize: 11, color: COLORS.textDim, lineHeight: 15 },
-
-  // Recent
-  recentSection: { marginBottom: 20 },
-  logItem: {
+  authButtonText: {
+    color: COLORS.neonCyan,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  bottomSheet: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: height * 0.65,
+    backgroundColor: 'rgba(10, 15, 30, 0.95)',
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+    padding: 24,
+    elevation: 20,
+  },
+  sheetHeader: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  dragHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: COLORS.textDim,
+    borderRadius: 2,
+  },
+  callInfoCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: COLORS.card,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 10,
-    marginBottom: 6,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
+    marginBottom: 20,
   },
-  logNumber: { fontSize: 14, fontWeight: '600', color: COLORS.text },
-  logTime: { fontSize: 12, color: COLORS.textDim },
-
-  // Permission Button
-  permButton: {
-    backgroundColor: COLORS.accent,
-    paddingVertical: 16,
-    borderRadius: 14,
-    alignItems: 'center',
-    marginTop: 10,
-    elevation: 8,
-  },
-  permButtonText: {
-    color: '#0A0E1A',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  permButtonSub: {
-    color: '#0A0E1A90',
+  callLabel: {
     fontSize: 11,
-    fontWeight: '600',
-    marginTop: 2,
+    color: COLORS.neonRed,
+    letterSpacing: 2,
+    marginBottom: 4,
   },
-  convoSection: { marginBottom: 20 },
-  convoBox: {
-    backgroundColor: COLORS.card,
-    borderRadius: 14,
-    padding: 14,
+  callerIdText: {
+    fontSize: 24,
+    color: COLORS.text,
+    fontWeight: '300',
+    letterSpacing: 1,
+  },
+  timerBadge: {
+    backgroundColor: 'rgba(0, 240, 255, 0.1)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: COLORS.cardBorder,
+    borderColor: COLORS.neonCyan,
+  },
+  timerText: {
+    color: COLORS.neonCyan,
+    fontWeight: '800',
+    fontSize: 16,
+    fontVariant: ['tabular-nums'],
+  },
+  transcriptContainer: {
+    flex: 1,
+  },
+  msgWrapper: {
+    marginBottom: 16,
+    maxWidth: '85%',
+  },
+  msgWrapperAi: {
+    alignSelf: 'flex-start',
+  },
+  msgWrapperUser: {
+    alignSelf: 'flex-end',
   },
   msgBubble: {
-    padding: 10,
-    borderRadius: 8,
-    marginBottom: 8,
+    padding: 14,
+    borderRadius: 16,
   },
-  msgAi: {
-    backgroundColor: COLORS.accent + '20',
+  msgBubbleAi: {
+    backgroundColor: 'rgba(0, 240, 255, 0.1)',
     borderLeftWidth: 3,
-    borderColor: COLORS.accent,
+    borderColor: COLORS.neonCyan,
+    borderTopLeftRadius: 4,
   },
-  msgSystem: {
-    backgroundColor: COLORS.warning + '20',
-    borderLeftWidth: 3,
-    borderColor: COLORS.warning,
+  msgBubbleUser: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRightWidth: 3,
+    borderColor: COLORS.textDim,
+    borderTopRightRadius: 4,
   },
-  msgText: {
+  msgSender: {
+    fontSize: 10,
+    color: COLORS.textDim,
+    marginBottom: 6,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  msgContent: {
     color: COLORS.text,
-    fontSize: 13,
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  scanningText: {
+    color: COLORS.neonRed,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    textAlign: 'center',
+    marginTop: 20,
+    opacity: 0.8,
   }
 });
