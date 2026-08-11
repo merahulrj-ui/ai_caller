@@ -56,7 +56,7 @@ class CallmanagerModule : Module() {
 
     AsyncFunction("requestDefaultDialer") {
       val context = appContext.reactContext ?: return@AsyncFunction false
-      val activity = appContext.currentActivity ?: return@AsyncFunction false
+      val activity = appContext.currentActivity
       logDebug(context, "Requesting Default Call Assistant Role...")
 
       try {
@@ -64,16 +64,39 @@ class CallmanagerModule : Module() {
           val roleManager = context.getSystemService(Context.ROLE_SERVICE) as? RoleManager
           if (roleManager != null && roleManager.isRoleAvailable(RoleManager.ROLE_DIALER)) {
             val intent = roleManager.createRequestRoleIntent(RoleManager.ROLE_DIALER)
-            activity.startActivity(intent)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (activity != null) {
+              activity.startActivity(intent)
+            } else {
+              context.startActivity(intent)
+            }
+            logDebug(context, "RoleManager Intent launched successfully.")
             return@AsyncFunction true
           }
         }
-        val intent = Intent(TelecomManager.ACTION_CHANGE_DEFAULT_DIALER)
-          .putExtra(TelecomManager.EXTRA_CHANGE_DEFAULT_DIALER_PACKAGE_NAME, context.packageName)
-        activity.startActivity(intent)
+        val intent = Intent(TelecomManager.ACTION_CHANGE_DEFAULT_DIALER).apply {
+          putExtra(TelecomManager.EXTRA_CHANGE_DEFAULT_DIALER_PACKAGE_NAME, context.packageName)
+          addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        if (activity != null) {
+          activity.startActivity(intent)
+        } else {
+          context.startActivity(intent)
+        }
+        logDebug(context, "TelecomManager Intent launched successfully.")
         return@AsyncFunction true
       } catch (e: Throwable) {
-        logDebug(context, "ERROR requesting default dialer: ${e.message}")
+        logDebug(context, "ERROR requesting default dialer: ${e.javaClass.simpleName} - ${e.message}")
+        try {
+          val settingsIntent = Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+          }
+          context.startActivity(settingsIntent)
+          logDebug(context, "Opened Default Apps Settings fallback screen.")
+          return@AsyncFunction true
+        } catch (e2: Throwable) {
+          logDebug(context, "Fallback failed: ${e2.message}")
+        }
         return@AsyncFunction false
       }
     }
