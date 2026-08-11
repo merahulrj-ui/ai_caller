@@ -47,35 +47,46 @@ class CallmanagerModule : Module() {
       return@AsyncFunction true
     }
 
-    OnCreate {
-      val context = appContext.reactContext ?: return@OnCreate
+    AsyncFunction("startListening") {
+      val context = appContext.reactContext ?: return@AsyncFunction false
       val telephonyManager = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
 
-      phoneStateListener = object : PhoneStateListener() {
-        override fun onCallStateChanged(state: Int, phoneNumber: String?) {
-          super.onCallStateChanged(state, phoneNumber)
-          when (state) {
-            TelephonyManager.CALL_STATE_RINGING -> {
-              sendEvent("onIncomingCall", mapOf("phoneNumber" to (phoneNumber ?: "")))
-            }
-            TelephonyManager.CALL_STATE_OFFHOOK -> {
-              sendEvent("onCallAnswered", mapOf("phoneNumber" to (phoneNumber ?: "")))
-            }
-            TelephonyManager.CALL_STATE_IDLE -> {
-              sendEvent("onCallEnded", mapOf("phoneNumber" to (phoneNumber ?: "")))
+      if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
+        if (phoneStateListener == null) {
+          phoneStateListener = object : PhoneStateListener() {
+            override fun onCallStateChanged(state: Int, phoneNumber: String?) {
+              super.onCallStateChanged(state, phoneNumber)
+              when (state) {
+                TelephonyManager.CALL_STATE_RINGING -> {
+                  sendEvent("onIncomingCall", mapOf("phoneNumber" to (phoneNumber ?: "")))
+                }
+                TelephonyManager.CALL_STATE_OFFHOOK -> {
+                  sendEvent("onCallAnswered", mapOf("phoneNumber" to (phoneNumber ?: "")))
+                }
+                TelephonyManager.CALL_STATE_IDLE -> {
+                  sendEvent("onCallEnded", mapOf("phoneNumber" to (phoneNumber ?: "")))
+                }
+              }
             }
           }
         }
+        try {
+          telephonyManager.listen(phoneStateListener, PhoneStateListener.LISTEN_CALL_STATE)
+          return@AsyncFunction true
+        } catch (e: SecurityException) {
+          e.printStackTrace()
+        }
       }
-      telephonyManager.listen(phoneStateListener, PhoneStateListener.LISTEN_CALL_STATE)
+      return@AsyncFunction false
     }
 
-    OnDestroy {
-      val context = appContext.reactContext ?: return@OnDestroy
+    AsyncFunction("stopListening") {
+      val context = appContext.reactContext ?: return@AsyncFunction false
       val telephonyManager = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
       phoneStateListener?.let {
         telephonyManager.listen(it, PhoneStateListener.LISTEN_NONE)
       }
+      return@AsyncFunction true
     }
   }
 }

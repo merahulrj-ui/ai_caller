@@ -33,6 +33,12 @@ export const requestPermissions = async () => {
         if (!isGranted) allGranted = false;
       }
 
+      if (results.READ_PHONE_STATE && CallmanagerModule) {
+        try {
+          await CallmanagerModule.startListening();
+        } catch(e) {}
+      }
+
       return { allGranted, results };
     } catch (err) {
       console.warn('Permission request error:', err);
