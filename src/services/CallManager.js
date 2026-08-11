@@ -91,3 +91,22 @@ export const subscribeToCalls = (onIncomingCall, onCallAnswered, onCallEnded) =>
     endedSub.remove();
   };
 };
+
+export const getDebugLogs = async () => {
+  if (!CallmanagerModule || !CallmanagerModule.getDebugLogs) return 'CallmanagerModule not linked.';
+  try {
+    return await CallmanagerModule.getDebugLogs();
+  } catch (e) {
+    return 'Failed to fetch debug logs: ' + e.message;
+  }
+};
+
+export const clearDebugLogs = async () => {
+  if (!CallmanagerModule || !CallmanagerModule.clearDebugLogs) return false;
+  try {
+    return await CallmanagerModule.clearDebugLogs();
+  } catch (e) {
+    return false;
+  }
+};
+

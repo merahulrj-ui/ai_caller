@@ -12,7 +12,7 @@ import {
   SafeAreaView,
   StatusBar
 } from 'react-native';
-import { requestPermissions, subscribeToCalls, answerCall, enableSpeakerphone } from '../services/CallManager';
+import { requestPermissions, subscribeToCalls, answerCall, enableSpeakerphone, getDebugLogs, clearDebugLogs } from '../services/CallManager';
 // AiService is lazy-loaded to prevent crash on startup (native modules like expo-av cause issues if loaded eagerly)
 
 const { width, height } = Dimensions.get('window');
@@ -45,6 +45,18 @@ export default function HomeScreen() {
   const [callerId, setCallerId] = useState('');
   const [callDuration, setCallDuration] = useState(0);
   const [conversation, setConversation] = useState([]);
+  const [debugLogs, setDebugLogs] = useState('');
+
+  const refreshLogs = async () => {
+    const logs = await getDebugLogs();
+    setDebugLogs(logs);
+  };
+
+  useEffect(() => {
+    refreshLogs();
+    const interval = setInterval(refreshLogs, 3000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Animations
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -256,6 +268,21 @@ export default function HomeScreen() {
                   <Text style={styles.authButtonText}>INITIALIZE PERMISSIONS</Text>
                 </TouchableOpacity>
               )}
+            </View>
+
+            {/* Debugger Panel */}
+            <View style={[styles.glassCard, { marginTop: 16 }]}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <Text style={styles.cardTitle}>ENGINE DEBUG LOGS (LIVE)</Text>
+                <TouchableOpacity onPress={async () => { await clearDebugLogs(); refreshLogs(); }}>
+                  <Text style={{ color: COLORS.neonRed, fontSize: 10, fontWeight: '700' }}>CLEAR</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={{ maxHeight: 150, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 8 }}>
+                <Text style={{ color: COLORS.neonCyan, fontSize: 10, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>
+                  {debugLogs || 'No logs captured yet...'}
+                </Text>
+              </ScrollView>
             </View>
           </View>
         )}
