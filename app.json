@@ -19,6 +19,22 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.merahulrj.ai_caller",
+      "intentFilters": [
+        {
+          "action": "DIAL",
+          "category": ["DEFAULT"],
+          "data": {
+            "scheme": "tel"
+          }
+        },
+        {
+          "action": "VIEW",
+          "category": ["DEFAULT", "BROWSABLE"],
+          "data": {
+            "scheme": "tel"
+          }
+        }
+      ],
       "permissions": [
         "READ_PHONE_STATE",
         "RECORD_AUDIO",
