@@ -28,12 +28,12 @@ class AiInCallService : InCallService() {
     }
   }
 
-  override fun onCallAdded(call: Call?) {
+  override fun onCallAdded(call: Call) {
     super.onCallAdded(call)
-    logDebug(this, "onCallAdded: State = ${call?.state}")
+    logDebug(this, "onCallAdded: State = ${call.state}")
     activeCall = call
 
-    if (call?.state == Call.STATE_RINGING) {
+    if (call.state == Call.STATE_RINGING) {
       logDebug(this, "RINGING call detected in InCallService!")
       if (isAiEnabled) {
         logDebug(this, "AI is ACTIVE! Answering call via Telecom Call.answer()...")
@@ -49,7 +49,7 @@ class AiInCallService : InCallService() {
     }
   }
 
-  override fun onCallRemoved(call: Call?) {
+  override fun onCallRemoved(call: Call) {
     super.onCallRemoved(call)
     logDebug(this, "onCallRemoved")
     if (activeCall == call) {

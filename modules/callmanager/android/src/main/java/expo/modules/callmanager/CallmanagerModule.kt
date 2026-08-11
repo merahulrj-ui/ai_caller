@@ -61,7 +61,7 @@ class CallmanagerModule : Module() {
 
       try {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-          val roleManager = context.getSystemService(RoleManager::class.java)
+          val roleManager = context.getSystemService(Context.ROLE_SERVICE) as? RoleManager
           if (roleManager != null && roleManager.isRoleAvailable(RoleManager.ROLE_DIALER)) {
             val intent = roleManager.createRequestRoleIntent(RoleManager.ROLE_DIALER)
             activity.startActivity(intent)
