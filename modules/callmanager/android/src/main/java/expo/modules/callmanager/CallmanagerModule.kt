@@ -49,9 +49,16 @@ class CallmanagerModule : Module() {
 
     AsyncFunction("isDefaultDialer") {
       val context = appContext.reactContext ?: return@AsyncFunction false
-      val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-      val isDefault = telecomManager.defaultDialerPackage == context.packageName
-      return@AsyncFunction isDefault
+      try {
+        val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+        val defaultPackage = telecomManager.defaultDialerPackage
+        val isDefault = defaultPackage == context.packageName
+        logDebug(context, "isDefaultDialer: isDefault=$isDefault, defaultPackage=${defaultPackage ?: "NULL"}")
+        return@AsyncFunction isDefault
+      } catch (e: Throwable) {
+        logDebug(context, "ERROR in isDefaultDialer: ${e.message}")
+        return@AsyncFunction false
+      }
     }
 
     AsyncFunction("requestDefaultDialer") {
