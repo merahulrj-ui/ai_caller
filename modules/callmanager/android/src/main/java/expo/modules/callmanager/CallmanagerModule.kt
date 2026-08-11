@@ -56,16 +56,20 @@ class CallmanagerModule : Module() {
           phoneStateListener = object : PhoneStateListener() {
             override fun onCallStateChanged(state: Int, phoneNumber: String?) {
               super.onCallStateChanged(state, phoneNumber)
-              when (state) {
-                TelephonyManager.CALL_STATE_RINGING -> {
-                  sendEvent("onIncomingCall", mapOf("phoneNumber" to (phoneNumber ?: "")))
+              try {
+                when (state) {
+                  TelephonyManager.CALL_STATE_RINGING -> {
+                    sendEvent("onIncomingCall", mapOf("phoneNumber" to (phoneNumber ?: "")))
+                  }
+                  TelephonyManager.CALL_STATE_OFFHOOK -> {
+                    sendEvent("onCallAnswered", mapOf("phoneNumber" to (phoneNumber ?: "")))
+                  }
+                  TelephonyManager.CALL_STATE_IDLE -> {
+                    sendEvent("onCallEnded", mapOf("phoneNumber" to (phoneNumber ?: "")))
+                  }
                 }
-                TelephonyManager.CALL_STATE_OFFHOOK -> {
-                  sendEvent("onCallAnswered", mapOf("phoneNumber" to (phoneNumber ?: "")))
-                }
-                TelephonyManager.CALL_STATE_IDLE -> {
-                  sendEvent("onCallEnded", mapOf("phoneNumber" to (phoneNumber ?: "")))
-                }
+              } catch (e: Exception) {
+                e.printStackTrace()
               }
             }
           }

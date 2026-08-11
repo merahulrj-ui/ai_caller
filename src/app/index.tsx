@@ -10,7 +10,8 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import { requestPermissions, subscribeToCalls } from '../services/CallManager';
+import { requestPermissions, subscribeToCalls, answerCall, enableSpeakerphone } from '../services/CallManager';
+import { startConversation, stopConversation, setApiKey } from '../services/AiService';
 
 const { width } = Dimensions.get('window');
 
@@ -45,6 +46,8 @@ export default function HomeScreen() {
   const [callerId, setCallerId] = useState('');
   const [callDuration, setCallDuration] = useState(0);
   const [callLog, setCallLog] = useState([]);
+  const [conversation, setConversation] = useState([]);
+  const [apiKey, setApiKeyValue] = useState('');
 
   // Animations
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -131,10 +134,30 @@ export default function HomeScreen() {
     return () => clearInterval(interval);
   }, [callStatus]);
 
+  // AI Conversation trigger
+  useEffect(() => {
+    if (callStatus === 'active' && aiActive) {
+      setConversation([]);
+      const onAiLog = (log) => setConversation(prev => [...prev, log]);
+      startConversation(onAiLog);
+    } else {
+      stopConversation();
+    }
+  }, [callStatus, aiActive]);
+
   // Subscribe to calls
   useEffect(() => {
     const unsubscribe = subscribeToCalls(
-      (number) => { setCallStatus('ringing'); setCallerId(number || 'Unknown'); },
+      (number) => { 
+        setCallStatus('ringing'); 
+        setCallerId(number || 'Unknown'); 
+        if (aiActive) {
+          setTimeout(() => {
+            answerCall();
+            enableSpeakerphone(true);
+          }, 1500); // 1.5 second delay before picking up
+        }
+      },
       () => { setCallStatus('active'); },
       () => {
         if (callerId) {
@@ -149,7 +172,7 @@ export default function HomeScreen() {
       }
     );
     return () => unsubscribe();
-  }, [callerId, callDuration]);
+  }, [callerId, callDuration, aiActive]);
 
   const handlePermissions = async () => {
     const result = await requestPermissions();
@@ -264,6 +287,23 @@ export default function HomeScreen() {
                   </View>
                 );
               })}
+            </View>
+          </View>
+        )}
+
+        {/* AI Conversation History */}
+        {callStatus === 'active' && conversation.length > 0 && (
+          <View style={styles.convoSection}>
+            <Text style={styles.sectionTitle}>💬 Live Conversation</Text>
+            <View style={styles.convoBox}>
+              {conversation.map((msg, index) => (
+                <View key={index} style={[styles.msgBubble, msg.sender === 'AI' ? styles.msgAi : styles.msgSystem]}>
+                  <Text style={styles.msgText}>
+                    <Text style={{fontWeight: 'bold'}}>{msg.sender}: </Text>
+                    {msg.text}
+                  </Text>
+                </View>
+              ))}
             </View>
           </View>
         )}
@@ -521,4 +561,31 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 2,
   },
+  convoSection: { marginBottom: 20 },
+  convoBox: {
+    backgroundColor: COLORS.card,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+  },
+  msgBubble: {
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  msgAi: {
+    backgroundColor: COLORS.accent + '20',
+    borderLeftWidth: 3,
+    borderColor: COLORS.accent,
+  },
+  msgSystem: {
+    backgroundColor: COLORS.warning + '20',
+    borderLeftWidth: 3,
+    borderColor: COLORS.warning,
+  },
+  msgText: {
+    color: COLORS.text,
+    fontSize: 13,
+  }
 });
