@@ -1,0 +1,12 @@
+{
+  "name": "callmanager",
+  "version": "0.1.0",
+  "description": "Call manager local module",
+  "main": "index.js",
+  "dependencies": {},
+  "expo": {
+    "modules": [
+      "expo.modules.callmanager.CallmanagerModule"
+    ]
+  }
+}
