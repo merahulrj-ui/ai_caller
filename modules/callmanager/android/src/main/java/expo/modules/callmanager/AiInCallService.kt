@@ -33,6 +33,22 @@ class AiInCallService : InCallService() {
     logDebug(this, "onCallAdded: State = ${call.state}")
     activeCall = call
 
+    val callback = object : Call.Callback() {
+      override fun onStateChanged(c: Call, state: Int) {
+        super.onStateChanged(c, state)
+        logDebug(this@AiInCallService, "Call Callback onStateChanged: $state")
+        if (state == Call.STATE_RINGING && isAiEnabled) {
+          try {
+            c.answer(VideoProfile.STATE_AUDIO_ONLY)
+            logDebug(this@AiInCallService, "SUCCESS: Answered via Callback!")
+          } catch (e: Throwable) {
+            logDebug(this@AiInCallService, "ERROR in Callback answer: ${e.message}")
+          }
+        }
+      }
+    }
+    call.registerCallback(callback)
+
     if (call.state == Call.STATE_RINGING) {
       logDebug(this, "RINGING call detected in InCallService!")
       if (isAiEnabled) {
