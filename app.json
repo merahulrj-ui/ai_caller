@@ -25,7 +25,8 @@
         "CALL_PHONE",
         "READ_CALL_LOG",
         "ANSWER_PHONE_CALLS",
-        "READ_PHONE_NUMBERS"
+        "READ_PHONE_NUMBERS",
+        "MODIFY_AUDIO_SETTINGS"
       ]
     },
     "web": {
