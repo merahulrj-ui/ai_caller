@@ -10,9 +10,10 @@ import {
   Platform,
   ScrollView,
   SafeAreaView,
-  StatusBar
+  StatusBar,
+  Share
 } from 'react-native';
-import { requestPermissions, subscribeToCalls, answerCall, enableSpeakerphone, getDebugLogs, clearDebugLogs } from '../services/CallManager';
+import { requestPermissions, subscribeToCalls, answerCall, enableSpeakerphone, getDebugLogs, clearDebugLogs, requestDefaultDialer, isDefaultDialer, setAiEnabled } from '../services/CallManager';
 // AiService is lazy-loaded to prevent crash on startup (native modules like expo-av cause issues if loaded eagerly)
 
 const { width, height } = Dimensions.get('window');
@@ -172,10 +173,22 @@ export default function HomeScreen() {
     return () => unsubscribe();
   }, [callerId, callDuration, aiActive]);
 
+  const [isDefault, setIsDefault] = useState(false);
+
+  const checkDefaultStatus = async () => {
+    const defaultStatus = await isDefaultDialer();
+    setIsDefault(defaultStatus);
+  };
+
+  useEffect(() => {
+    checkDefaultStatus();
+  }, []);
+
   const handlePermissions = async () => {
     const result = await requestPermissions();
     setPermResults(result.results || {});
     setAllPermsGranted(result.allGranted);
+    await checkDefaultStatus();
   };
 
   const toggleAI = () => {
@@ -183,7 +196,9 @@ export default function HomeScreen() {
       handlePermissions();
       return;
     }
-    setAiActive(!aiActive);
+    const nextState = !aiActive;
+    setAiActive(nextState);
+    setAiEnabled(nextState);
   };
 
   const formatDuration = (secs) => {
@@ -263,9 +278,17 @@ export default function HomeScreen() {
                 })}
               </View>
               
-              {!allPermsGranted && (
+              {!allPermsGranted ? (
                 <TouchableOpacity style={styles.authButton} onPress={handlePermissions}>
                   <Text style={styles.authButtonText}>INITIALIZE PERMISSIONS</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity 
+                  style={[styles.authButton, { backgroundColor: isDefault ? 'rgba(0, 240, 255, 0.15)' : 'rgba(255, 42, 42, 0.15)', borderColor: isDefault ? COLORS.neonCyan : COLORS.neonRed }]} 
+                  onPress={async () => { await requestDefaultDialer(); await checkDefaultStatus(); }}>
+                  <Text style={[styles.authButtonText, { color: isDefault ? COLORS.neonCyan : COLORS.neonRed }]}>
+                    {isDefault ? '✓ DEFAULT CALL ASSISTANT ACTIVE' : '⚡ SET AS DEFAULT CALL ASSISTANT'}
+                  </Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -274,12 +297,17 @@ export default function HomeScreen() {
             <View style={[styles.glassCard, { marginTop: 16 }]}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <Text style={styles.cardTitle}>ENGINE DEBUG LOGS (LIVE)</Text>
-                <TouchableOpacity onPress={async () => { await clearDebugLogs(); refreshLogs(); }}>
-                  <Text style={{ color: COLORS.neonRed, fontSize: 10, fontWeight: '700' }}>CLEAR</Text>
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <TouchableOpacity onPress={() => { Share.share({ title: 'AI Caller Debug Logs', message: debugLogs || 'No logs captured' }); }}>
+                    <Text style={{ color: COLORS.neonCyan, fontSize: 10, fontWeight: '700' }}>COPY / SHARE</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={async () => { await clearDebugLogs(); refreshLogs(); }}>
+                    <Text style={{ color: COLORS.neonRed, fontSize: 10, fontWeight: '700' }}>CLEAR</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
               <ScrollView style={{ maxHeight: 150, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 8 }}>
-                <Text style={{ color: COLORS.neonCyan, fontSize: 10, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>
+                <Text selectable={true} style={{ color: COLORS.neonCyan, fontSize: 10, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>
                   {debugLogs || 'No logs captured yet...'}
                 </Text>
               </ScrollView>

@@ -92,6 +92,33 @@ export const subscribeToCalls = (onIncomingCall, onCallAnswered, onCallEnded) =>
   };
 };
 
+export const requestDefaultDialer = async () => {
+  if (!CallmanagerModule || !CallmanagerModule.requestDefaultDialer) return false;
+  try {
+    return await CallmanagerModule.requestDefaultDialer();
+  } catch (e) {
+    return false;
+  }
+};
+
+export const isDefaultDialer = async () => {
+  if (!CallmanagerModule || !CallmanagerModule.isDefaultDialer) return false;
+  try {
+    return await CallmanagerModule.isDefaultDialer();
+  } catch (e) {
+    return false;
+  }
+};
+
+export const setAiEnabled = async (enabled) => {
+  if (!CallmanagerModule || !CallmanagerModule.setAiEnabled) return false;
+  try {
+    return await CallmanagerModule.setAiEnabled(enabled);
+  } catch (e) {
+    return false;
+  }
+};
+
 export const getDebugLogs = async () => {
   if (!CallmanagerModule || !CallmanagerModule.getDebugLogs) return 'CallmanagerModule not linked.';
   try {
@@ -109,4 +136,5 @@ export const clearDebugLogs = async () => {
     return false;
   }
 };
+
 

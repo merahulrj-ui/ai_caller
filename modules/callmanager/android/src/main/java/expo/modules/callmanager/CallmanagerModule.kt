@@ -1,12 +1,15 @@
 package expo.modules.callmanager
 
 import android.content.Context
+import android.content.Intent
 import android.media.AudioManager
 import android.telecom.TelecomManager
+import android.telecom.VideoProfile
 import android.telephony.TelephonyManager
 import android.telephony.PhoneStateListener
 import android.os.Build
 import android.Manifest
+import android.app.role.RoleManager
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
 import expo.modules.kotlin.modules.Module
@@ -25,7 +28,6 @@ class CallmanagerModule : Module() {
       val timeStamp = SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(Date())
       val existingLogs = prefs.getString("logs", "") ?: ""
       val newLogs = "[$timeStamp] $message\n$existingLogs"
-      // Keep only last ~50 lines
       val lines = newLogs.split("\n").take(50).joinToString("\n")
       prefs.edit().putString("logs", lines).apply()
     } catch (e: Throwable) {
@@ -37,6 +39,44 @@ class CallmanagerModule : Module() {
     Name("Callmanager")
 
     Events("onIncomingCall", "onCallAnswered", "onCallEnded", "onDebugLog")
+
+    AsyncFunction("setAiEnabled") { enabled: Boolean ->
+      AiInCallService.isAiEnabled = enabled
+      val context = appContext.reactContext ?: return@AsyncFunction true
+      logDebug(context, "AI State set to: $enabled")
+      return@AsyncFunction true
+    }
+
+    AsyncFunction("isDefaultDialer") {
+      val context = appContext.reactContext ?: return@AsyncFunction false
+      val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+      val isDefault = telecomManager.packageName == context.packageName
+      return@AsyncFunction isDefault
+    }
+
+    AsyncFunction("requestDefaultDialer") {
+      val context = appContext.reactContext ?: return@AsyncFunction false
+      val activity = appContext.currentActivity ?: return@AsyncFunction false
+      logDebug(context, "Requesting Default Call Assistant Role...")
+
+      try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+          val roleManager = context.getSystemService(RoleManager::class.java)
+          if (roleManager != null && roleManager.isRoleAvailable(RoleManager.ROLE_DIALER)) {
+            val intent = roleManager.createRequestRoleIntent(RoleManager.ROLE_DIALER)
+            activity.startActivity(intent)
+            return@AsyncFunction true
+          }
+        }
+        val intent = Intent(TelecomManager.ACTION_CHANGE_DEFAULT_DIALER)
+          .putExtra(TelecomManager.EXTRA_CHANGE_DEFAULT_DIALER_PACKAGE_NAME, context.packageName)
+        activity.startActivity(intent)
+        return@AsyncFunction true
+      } catch (e: Throwable) {
+        logDebug(context, "ERROR requesting default dialer: ${e.message}")
+        return@AsyncFunction false
+      }
+    }
 
     AsyncFunction("getDebugLogs") {
       val context = appContext.reactContext ?: return@AsyncFunction ""
@@ -54,11 +94,22 @@ class CallmanagerModule : Module() {
     AsyncFunction("answerCall") {
       val context = appContext.reactContext ?: return@AsyncFunction false
       logDebug(context, "Attempting answerCall()...")
-      
-      val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
 
+      // 1. Try InCallService activeCall first
+      AiInCallService.activeCall?.let { call ->
+        try {
+          call.answer(VideoProfile.STATE_AUDIO_ONLY)
+          logDebug(context, "SUCCESS: Answered via AiInCallService activeCall!")
+          sendEvent("onCallAnswered", mapOf("success" to true))
+          return@AsyncFunction true
+        } catch (e: Throwable) {
+          logDebug(context, "ERROR in AiInCallService.activeCall.answer(): ${e.message}")
+        }
+      }
+
+      // 2. Fallback to TelecomManager.acceptRingingCall()
+      val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
       val hasPerm = ContextCompat.checkSelfPermission(context, Manifest.permission.ANSWER_PHONE_CALLS) == PackageManager.PERMISSION_GRANTED
-      logDebug(context, "ANSWER_PHONE_CALLS permission granted: $hasPerm")
 
       if (hasPerm) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -72,11 +123,7 @@ class CallmanagerModule : Module() {
             e.printStackTrace()
             return@AsyncFunction false
           }
-        } else {
-          logDebug(context, "ERROR: Android version < O (26)")
         }
-      } else {
-        logDebug(context, "ERROR: Missing ANSWER_PHONE_CALLS permission!")
       }
       return@AsyncFunction false
     }
@@ -101,7 +148,6 @@ class CallmanagerModule : Module() {
       val telephonyManager = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
 
       val hasReadPhoneState = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
-      logDebug(context, "READ_PHONE_STATE permission granted: $hasReadPhoneState")
 
       if (hasReadPhoneState) {
         if (phoneStateListener == null) {
@@ -143,8 +189,6 @@ class CallmanagerModule : Module() {
           logDebug(context, "ERROR registering PhoneStateListener: ${e.javaClass.simpleName} - ${e.message}")
           e.printStackTrace()
         }
-      } else {
-        logDebug(context, "ERROR: Missing READ_PHONE_STATE permission")
       }
       return@AsyncFunction false
     }
