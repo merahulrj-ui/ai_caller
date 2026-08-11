@@ -50,7 +50,7 @@ class CallmanagerModule : Module() {
     AsyncFunction("isDefaultDialer") {
       val context = appContext.reactContext ?: return@AsyncFunction false
       val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-      val isDefault = telecomManager.packageName == context.packageName
+      val isDefault = telecomManager.defaultDialerPackage == context.packageName
       return@AsyncFunction isDefault
     }
 
