@@ -13,7 +13,7 @@ import {
   StatusBar
 } from 'react-native';
 import { requestPermissions, subscribeToCalls, answerCall, enableSpeakerphone } from '../services/CallManager';
-import { startConversation, stopConversation } from '../services/AiService';
+// AiService is lazy-loaded to prevent crash on startup (native modules like expo-av cause issues if loaded eagerly)
 
 const { width, height } = Dimensions.get('window');
 
@@ -116,15 +116,25 @@ export default function HomeScreen() {
     return () => clearInterval(interval);
   }, [callStatus]);
 
-  // AI Conversation trigger
+  // AI Conversation trigger (lazy-loaded)
   useEffect(() => {
+    let cleanup = false;
     if (callStatus === 'active' && aiActive) {
       setConversation([]);
-      const onAiLog = (log) => setConversation(prev => [...prev, log]);
-      startConversation(onAiLog);
+      import('../services/AiService').then((AiService) => {
+        if (!cleanup) {
+          const onAiLog = (log) => setConversation(prev => [...prev, log]);
+          AiService.startConversation(onAiLog);
+        }
+      }).catch((err) => {
+        console.warn('AiService load error:', err);
+      });
     } else {
-      stopConversation();
+      import('../services/AiService').then((AiService) => {
+        AiService.stopConversation();
+      }).catch(() => {});
     }
+    return () => { cleanup = true; };
   }, [callStatus, aiActive]);
 
   // Subscribe to calls
