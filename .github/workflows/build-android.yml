@@ -36,6 +36,7 @@ jobs:
         run: cd android && ./gradlew assembleRelease --build-cache --configure-on-demand
         env:
           NODE_OPTIONS: --max_old_space_size=4096
+          GRADLE_OPTS: -Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=1024m -XX:+HeapDumpOnOutOfMemoryError"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
