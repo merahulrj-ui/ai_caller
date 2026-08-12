@@ -189,7 +189,8 @@ class AiInCallService : InCallService() {
             super.onStateChanged(c, state)
             logDebug(this@AiInCallService, "Call Callback onStateChanged: $state")
             if (state == Call.STATE_RINGING) {
-              isIncomingCall = true
+              // DO NOT set isIncomingCall here - it's already set in onCallAdded
+              // Some Android ROMs fire STATE_RINGING for outgoing "alerting" phase
               val number = c.details?.handle?.schemeSpecificPart ?: "Incoming Call"
               showFullScreenCallNotification(number)
               bringAppToForeground()
@@ -253,6 +254,15 @@ class AiInCallService : InCallService() {
       logDebug(this, "onCallRemoved")
       cancelAutoAnswerTimer()
       CallmanagerModule.stopRingtone(this)
+      // CRITICAL FIX: Reset audio mode to NORMAL so speaker routing is restored for media playback
+      try {
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+        audioManager.mode = android.media.AudioManager.MODE_NORMAL
+        audioManager.isSpeakerphoneOn = false
+        logDebug(this, "SUCCESS: Audio mode reset to MODE_NORMAL")
+      } catch (e: Throwable) {
+        logDebug(this, "Warning resetting audio mode: ${e.message}")
+      }
       if (activeCall == call) {
         activeCall = null
       }

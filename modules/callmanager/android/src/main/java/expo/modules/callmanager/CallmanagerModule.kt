@@ -349,14 +349,16 @@ class CallmanagerModule : Module() {
 
     AsyncFunction("speakCallAudio") { text: String ->
       val context = appContext.reactContext ?: return@AsyncFunction false
-      logDebug(context, "Attempting native speakCallAudio: $text")
+      // Sanitize ALL robotic acronym variations for natural human speech
+      val cleanText = text.replace(Regex("J[.\\-]?A[.\\-]?R[.\\-]?V[.\\-]?I[.\\-]?S", RegexOption.IGNORE_CASE), "Jarvis")
+      logDebug(context, "Attempting native speakCallAudio: $cleanText")
       try {
         initNativeTts(context)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-          tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "AiCallSpeech_${System.currentTimeMillis()}")
+          tts?.speak(cleanText, TextToSpeech.QUEUE_FLUSH, null, "AiCallSpeech_${System.currentTimeMillis()}")
         } else {
           @Suppress("DEPRECATION")
-          tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null)
+          tts?.speak(cleanText, TextToSpeech.QUEUE_FLUSH, null)
         }
         logDebug(context, "SUCCESS: Spoke call audio natively via USAGE_VOICE_COMMUNICATION")
         return@AsyncFunction true
@@ -454,6 +456,7 @@ class CallmanagerModule : Module() {
       if (hasReadPhoneState) {
         if (phoneStateListener == null) {
           phoneStateListener = object : PhoneStateListener() {
+            var previousState = TelephonyManager.CALL_STATE_IDLE
             override fun onCallStateChanged(state: Int, phoneNumber: String?) {
               super.onCallStateChanged(state, phoneNumber)
               try {
@@ -463,19 +466,24 @@ class CallmanagerModule : Module() {
                   TelephonyManager.CALL_STATE_IDLE -> "IDLE"
                   else -> "UNKNOWN($state)"
                 }
-                logDebug(context, "onCallStateChanged: $stateName, Number: ${phoneNumber ?: "NULL"}")
+                logDebug(context, "onCallStateChanged: $stateName (prev=${previousState}), Number: ${phoneNumber ?: "NULL"}")
 
                 when (state) {
                   TelephonyManager.CALL_STATE_RINGING -> {
                     sendEvent("onIncomingCall", mapOf("phoneNumber" to (phoneNumber ?: "")))
                   }
                   TelephonyManager.CALL_STATE_OFFHOOK -> {
-                    sendEvent("onCallAnswered", mapOf("phoneNumber" to (phoneNumber ?: "")))
+                    // CRITICAL FIX: Only emit onCallAnswered if previous state was RINGING (incoming call)
+                    // For outgoing calls, previousState is IDLE -> OFFHOOK, so we skip
+                    if (previousState == TelephonyManager.CALL_STATE_RINGING) {
+                      sendEvent("onCallAnswered", mapOf("phoneNumber" to (phoneNumber ?: "")))
+                    }
                   }
                   TelephonyManager.CALL_STATE_IDLE -> {
                     sendEvent("onCallEnded", mapOf("phoneNumber" to (phoneNumber ?: "")))
                   }
                 }
+                previousState = state
               } catch (e: Throwable) {
                 logDebug(context, "FATAL ERROR in onCallStateChanged: ${e.javaClass.simpleName} - ${e.message}")
                 e.printStackTrace()

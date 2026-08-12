@@ -57,7 +57,7 @@ import { speakCallAudio, stopCallAudio } from './CallManager';
  */
 export const speakAiVoiceResponse = async (text, onDoneCallback) => {
   try {
-    const cleanText = text.replace(/J\.A\.R\.V\.I\.S/g, 'Jarvis');
+    const cleanText = text.replace(/J[.\-]?A[.\-]?R[.\-]?V[.\-]?I[.\-]?S/gi, 'Jarvis');
     const spokenNatively = await speakCallAudio(cleanText);
     if (!spokenNatively) {
       await Speech.stop();

@@ -1,1565 +1,854 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  SafeAreaView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  View,
-  TouchableOpacity,
-  ScrollView,
-  FlatList,
-  TextInput,
-  Modal,
-  Dimensions,
-  Animated,
-  Easing,
+  SafeAreaView, StatusBar, StyleSheet, Text, View, TouchableOpacity,
+  ScrollView, FlatList, TextInput, Modal, Dimensions, Animated, Easing,
+  Vibration, Platform,
 } from 'react-native';
 import * as Speech from 'expo-speech';
 import {
-  requestPermissions,
-  answerCall,
-  enableSpeakerphone,
-  subscribeToCalls,
-  requestDefaultDialer,
-  isDefaultDialer,
-  setAiEnabled,
-  getDebugLogs,
-  clearDebugLogs,
-  endCall,
-  makeCall,
-  muteMicrophone,
-  getRealCallLogs,
-  getRealContacts,
-  getSimCardsInfo,
-  speakCallAudio,
-  stopCallAudio,
+  requestPermissions, answerCall, enableSpeakerphone, subscribeToCalls,
+  requestDefaultDialer, isDefaultDialer, setAiEnabled, getDebugLogs,
+  clearDebugLogs, endCall, makeCall, muteMicrophone, getRealCallLogs,
+  getRealContacts, getSimCardsInfo, speakCallAudio, stopCallAudio,
 } from '../services/CallManager';
 import {
-  generateAiCallReply,
-  speakAiVoiceResponse,
-  stopAiVoiceResponse,
+  generateAiCallReply, speakAiVoiceResponse, stopAiVoiceResponse,
 } from '../services/GeminiAiService';
 
 const { width, height } = Dimensions.get('window');
 
-const COLORS = {
-  bg: '#050814',
-  bgCard: 'rgba(13, 22, 45, 0.75)',
-  bgCardSolid: '#0B152B',
-  glassBorder: 'rgba(0, 240, 255, 0.2)',
-  neonCyan: '#00F0FF',
-  neonBlue: '#0070FF',
-  neonGreen: '#10B981',
-  neonRed: '#EF4444',
-  neonAmber: '#F59E0B',
-  text: '#FFFFFF',
-  textSub: '#94A3B8',
-  textDim: '#64748B',
+// ── Color Palette (ODialer Dark Theme) ──────────────────────────────────────
+const C = {
+  bg:         '#0b0b0f',
+  surface:    '#161620',
+  surfaceAlt: '#1e1e2c',
+  border:     '#2a2a3a',
+  accent:     '#2979ff',
+  green:      '#00c853',
+  red:        '#ff1744',
+  orange:     '#ff9100',
+  white:      '#ffffff',
+  textPri:    '#f0f0f5',
+  textSec:    '#8e8ea0',
+  textDim:    '#55556a',
 };
 
-const MOCK_CONTACTS = [
-  { id: '1', name: 'Rahul Sharma', number: '+919997233530', category: 'VIP' },
-  { id: '2', name: 'Priya Verma', number: '+919876543210', category: 'Work' },
-  { id: '3', name: 'Amit Kumar', number: '+919123456789', category: 'Family' },
-  { id: '4', name: 'Jarvis AI Support', number: '+918000112233', category: 'System' },
-];
-
-const MOCK_LOGS = [
-  { id: '1', name: 'Rahul Sharma', number: '+919997233530', type: 'incoming', time: '10:45 AM', duration: '1m 24s' },
-  { id: '2', name: 'Priya Verma', number: '+919876543210', type: 'outgoing', time: 'Yesterday', duration: '4m 10s' },
-  { id: '3', name: 'Unknown Caller', number: '+919811223344', type: 'missed', time: 'Yesterday', duration: '0s' },
-];
-
-// Pure Zero-Dependency Vector Call End Icon
-const PureVectorCallEndIcon = () => (
-  <View style={{ width: 28, height: 16, alignItems: 'center', justifyContent: 'center' }}>
-    <View
-      style={{
-        width: 24,
-        height: 12,
-        borderTopLeftRadius: 12,
-        borderTopRightRadius: 12,
-        borderWidth: 3.5,
-        borderColor: '#FFFFFF',
-        borderBottomWidth: 0,
-      }}
-    />
-    <View
-      style={{
-        position: 'absolute',
-        left: 1,
-        bottom: 0,
-        width: 6,
-        height: 6,
-        backgroundColor: '#FFFFFF',
-        borderRadius: 2,
-      }}
-    />
-    <View
-      style={{
-        position: 'absolute',
-        right: 1,
-        bottom: 0,
-        width: 6,
-        height: 6,
-        backgroundColor: '#FFFFFF',
-        borderRadius: 2,
-      }}
-    />
+// ── Tiny Phone-End Icon (Zero Dependencies) ─────────────────────────────────
+const PhoneEndIcon = ({ size = 24 }) => (
+  <View style={{ width: size, height: size * 0.55, justifyContent: 'center', alignItems: 'center' }}>
+    <View style={{
+      width: size * 0.85, height: size * 0.32,
+      backgroundColor: C.white, borderRadius: size * 0.16,
+      transform: [{ rotate: '135deg' }],
+    }} />
   </View>
 );
 
+const PhoneIcon = ({ size = 24 }) => (
+  <View style={{ width: size, height: size * 0.55, justifyContent: 'center', alignItems: 'center' }}>
+    <View style={{
+      width: size * 0.85, height: size * 0.32,
+      backgroundColor: C.white, borderRadius: size * 0.16,
+      transform: [{ rotate: '225deg' }],
+    }} />
+  </View>
+);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MAIN HOME SCREEN
+// ═══════════════════════════════════════════════════════════════════════════════
 export default function HomeScreen() {
-  const [activeTab, setActiveTab] = useState('jarvis'); // 'jarvis' | 'contacts' | 'recents' | 'dialpad'
-  const [permResults, setPermResults] = useState({});
-  const [allPermsGranted, setAllPermsGranted] = useState(false);
-  const [aiActive, setAiActive] = useState(true);
-  const [callStatus, setCallStatus] = useState('idle'); // 'idle' | 'ringing' | 'active' | 'outgoing'
-  const [callerId, setCallerId] = useState('');
-  const [callDuration, setCallDuration] = useState(0);
-  const [debugLogs, setDebugLogs] = useState('');
+  // ── Tab & App State ─────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState('recents');
   const [isDefault, setIsDefault] = useState(false);
-
-  // In-Call Controls
-  const [isMuted, setIsMuted] = useState(false);
-  const [isSpeakerOn, setIsSpeakerOn] = useState(false);
-
-  // Dialpad & SIM Chooser States
-  const [dialedNumber, setDialedNumber] = useState('');
-  const [contactSearch, setContactSearch] = useState('');
+  const [jarvisEnabled, setJarvisEnabled] = useState(false);
+  const [debugLogs, setDebugLogs] = useState('');
+  const [contacts, setContacts] = useState([]);
+  const [callLogs, setCallLogs] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [simCards, setSimCards] = useState([]);
   const [showSimModal, setShowSimModal] = useState(false);
+  const [showDialpad, setShowDialpad] = useState(false);
   const [pendingCallTarget, setPendingCallTarget] = useState('');
-  const [selectedSim, setSelectedSim] = useState('SIM 1');
+  const [dialNumber, setDialNumber] = useState('');
 
-  // Real Contacts & Call Logs & SIM Info
-  const [contactsList, setContactsList] = useState(MOCK_CONTACTS);
-  const [callLogsList, setCallLogsList] = useState(MOCK_LOGS);
-  const [simCardsList, setSimCardsList] = useState([
-    { slot: 0, name: 'SIM 1 • Primary Line', carrier: 'Cellular SIM 1' },
-    { slot: 1, name: 'SIM 2 • Secondary Line', carrier: 'Cellular SIM 2' }
-  ]);
-
-  const fetchPhoneData = async () => {
-    try {
-      const realLogs = await getRealCallLogs();
-      if (realLogs && realLogs.length > 0) {
-        setCallLogsList(realLogs);
-      }
-      const realContacts = await getRealContacts();
-      if (realContacts && realContacts.length > 0) {
-        setContactsList(realContacts);
-      }
-      const sims = await getSimCardsInfo();
-      if (sims && sims.length > 0) {
-        setSimCardsList(sims);
-      }
-    } catch (e) {}
-  };
-
-  useEffect(() => {
-    fetchPhoneData();
-  }, []);
-
-  const refreshLogs = async () => {
-    const logs = await getDebugLogs();
-    setDebugLogs(logs);
-  };
-
-  useEffect(() => {
-    if (activeTab === 'jarvis') {
-      refreshLogs();
-    } else if (activeTab === 'recents' || activeTab === 'contacts') {
-      fetchPhoneData();
-    }
-  }, [activeTab]);
-
-  // High-Tech Animations
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const rotationAnim = useRef(new Animated.Value(0)).current;
-  const fadeInAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.timing(fadeInAnim, {
-      toValue: 1,
-      duration: 600,
-      useNativeDriver: true,
-    }).start();
-  }, []);
-
-  useEffect(() => {
-    let pulse, rotate;
-    if (aiActive) {
-      pulse = Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.2, duration: 1400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1, duration: 1400, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        ])
-      );
-      rotate = Animated.loop(
-        Animated.timing(rotationAnim, {
-          toValue: 1,
-          duration: 10000,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        })
-      );
-      pulse.start();
-      rotate.start();
-    } else {
-      pulseAnim.setValue(1);
-      rotationAnim.setValue(0);
-    }
-    return () => {
-      if (pulse) pulse.stop();
-      if (rotate) rotate.stop();
-    };
-  }, [aiActive]);
-
-  useEffect(() => {
-    let interval;
-    if (callStatus === 'active') {
-      setCallDuration(0);
-      interval = setInterval(() => setCallDuration((prev) => prev + 1), 1000);
-      startAiCallGreeting();
-    }
-    return () => clearInterval(interval);
-  }, [callStatus]);
-
-  // Live Conversation Feed
-  const [conversation, setConversation] = useState([]);
-  const [speechInput, setSpeechInput] = useState('');
+  // ── Call State ──────────────────────────────────────────────────────────
+  const [callStatus, setCallStatus] = useState('idle');
+  const [callerNumber, setCallerNumber] = useState('');
+  const [callerName, setCallerName] = useState('');
+  const [callDuration, setCallDuration] = useState(0);
+  const [isSpeaker, setIsSpeaker] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [aiCountdown, setAiCountdown] = useState(10);
   const [isAiTalking, setIsAiTalking] = useState(false);
+  const [speechInput, setSpeechInput] = useState('');
 
-  const startAiCallGreeting = async () => {
-    try {
-      const greeting = "Hello! Main Rahul ka assistant Jarvis bol raha hu. Rahul ji abhi busy hain, bataiye main kya message de du?";
-      setConversation([{ id: '1', sender: 'jarvis', text: greeting, time: new Date().toLocaleTimeString() }]);
-      setIsAiTalking(true);
-      await speakCallAudio(greeting);
-      setIsAiTalking(false);
-    } catch (e) {}
-  };
+  // ── Refs ────────────────────────────────────────────────────────────────
+  const isIncomingCallRef = useRef(false);
+  const callStartTimeRef = useRef(null);
+  const timerIntervalRef = useRef(null);
+  const aiCountdownRef = useRef(null);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const ringAnim = useRef(new Animated.Value(0)).current;
 
-  const handleSendSpeechInput = async (customText) => {
-    const textToSend = customText || speechInput;
-    if (!textToSend.trim()) return;
-
-    const userMsg = { id: Date.now().toString(), sender: 'caller', text: textToSend, time: new Date().toLocaleTimeString() };
-    setConversation((prev) => [...prev, userMsg]);
-    if (!customText) setSpeechInput('');
-
-    setIsAiTalking(true);
-    const aiReply = await generateAiCallReply(textToSend, conversation);
-    const aiMsg = { id: (Date.now() + 1).toString(), sender: 'jarvis', text: aiReply, time: new Date().toLocaleTimeString() };
-    setConversation((prev) => [...prev, aiMsg]);
-
-    await speakAiVoiceResponse(aiReply, () => {
-      setIsAiTalking(false);
-    });
-  };
-
-  // 10-Second Auto-Answer Timer Ref
-  const autoAnswerTimerRef = useRef(null);
-
-  // Subscribe to Native Call Events
+  // ═══ LIFECYCLE & SUBSCRIPTIONS ══════════════════════════════════════════
   useEffect(() => {
+    checkDefaultDialer();
+    fetchData();
+
+    // subscribeToCalls takes 3 separate callbacks: (onIncoming, onAnswered, onEnded)
     const unsubscribe = subscribeToCalls(
-      (number) => {
+      // ── onIncomingCall ── receives {phoneNumber}
+      (evt) => {
+        const number = (evt && evt.phoneNumber) || 'Unknown';
+        isIncomingCallRef.current = true;
         setCallStatus('ringing');
-        setCallerId(number || 'Incoming Call');
-
-        if (autoAnswerTimerRef.current) {
-          clearTimeout(autoAnswerTimerRef.current);
-        }
-
-        if (aiActive) {
-          autoAnswerTimerRef.current = setTimeout(async () => {
-            await answerCall();
-            await enableSpeakerphone(true);
-            setIsSpeakerOn(true);
-            setCallStatus('active');
-          }, 10000);
-        }
-      },
-      async (evt) => {
-        if (autoAnswerTimerRef.current) clearTimeout(autoAnswerTimerRef.current);
-        const wasRinging = callStatus === 'ringing';
-        setCallStatus('active');
-        await enableSpeakerphone(true);
-        setIsSpeakerOn(true);
-        if (wasRinging || (evt && evt.isIncoming)) {
-          await startAiCallGreeting();
-        }
-      },
-      async () => {
-        if (autoAnswerTimerRef.current) clearTimeout(autoAnswerTimerRef.current);
-        setCallStatus('idle');
-        setCallerId('');
+        setCallerNumber(number);
+        setCallerName(number);
+        setChatMessages([]);
         setCallDuration(0);
         setIsMuted(false);
-        setIsSpeakerOn(false);
+        setIsSpeaker(false);
+
+        if (jarvisEnabled) {
+          let count = 10;
+          setAiCountdown(count);
+          if (aiCountdownRef.current) clearInterval(aiCountdownRef.current);
+          aiCountdownRef.current = setInterval(async () => {
+            count--;
+            setAiCountdown(count);
+            if (count <= 0) {
+              clearInterval(aiCountdownRef.current);
+              aiCountdownRef.current = null;
+              await answerCall();
+              await enableSpeakerphone(true);
+              setIsSpeaker(true);
+            }
+          }, 1000);
+        }
+      },
+      // ── onCallAnswered ── receives {phoneNumber, success, isIncoming}
+      async (evt) => {
+        if (aiCountdownRef.current) {
+          clearInterval(aiCountdownRef.current);
+          aiCountdownRef.current = null;
+        }
+
+        const wasIncoming = isIncomingCallRef.current || (evt && evt.isIncoming);
+
+        if (!wasIncoming) {
+          setCallerNumber(prev => prev || (evt && evt.phoneNumber) || '');
+          setCallerName(prev => prev || (evt && evt.phoneNumber) || '');
+        }
+
+        setCallStatus('active');
+
+        // Start timer only when call actually connects
+        callStartTimeRef.current = Date.now();
+        if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = setInterval(() => {
+          if (callStartTimeRef.current) {
+            setCallDuration(Math.floor((Date.now() - callStartTimeRef.current) / 1000));
+          }
+        }, 1000);
+
+        // Jarvis greeting ONLY for incoming calls
+        if (wasIncoming && jarvisEnabled) {
+          await enableSpeakerphone(true);
+          setIsSpeaker(true);
+          startAiGreeting();
+        }
+      },
+      // ── onCallEnded ──
+      async () => {
+        setCallStatus('idle');
+        isIncomingCallRef.current = false;
+        if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+        if (aiCountdownRef.current) clearInterval(aiCountdownRef.current);
+        timerIntervalRef.current = null;
+        aiCountdownRef.current = null;
+        callStartTimeRef.current = null;
+        setCallDuration(0);
+        setIsMuted(false);
+        setIsSpeaker(false);
+        setIsAiTalking(false);
         await stopAiVoiceResponse();
-        await fetchPhoneData();
-        setTimeout(fetchPhoneData, 1500);
+        fetchData();
       }
     );
+
     return () => {
-      if (autoAnswerTimerRef.current) clearTimeout(autoAnswerTimerRef.current);
       unsubscribe();
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      if (aiCountdownRef.current) clearInterval(aiCountdownRef.current);
     };
-  }, [aiActive, callStatus]);
+  }, [jarvisEnabled]);
 
-  const checkDefaultStatus = async () => {
-    const defaultStatus = await isDefaultDialer();
-    setIsDefault(defaultStatus);
-  };
-
+  // Incoming call ring pulse animation
   useEffect(() => {
-    checkDefaultStatus();
-  }, []);
-
-  const handlePermissions = async () => {
-    const result = await requestPermissions();
-    setPermResults(result.results || {});
-    setAllPermsGranted(result.allGranted);
-    await checkDefaultStatus();
-    await fetchPhoneData();
-  };
-
-  const toggleAI = async () => {
-    const nextState = !aiActive;
-    setAiActive(nextState);
-    setAiEnabled(nextState);
-    if (nextState) {
-      Speech.stop();
-      Speech.speak("Welcome Sir. Jarvis autonomous system is online.", {
-        language: 'en-US',
-        pitch: 1.0,
-        rate: 0.9,
-      });
+    if (callStatus === 'ringing') {
+      const anim = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.15, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        ])
+      );
+      anim.start();
+      return () => anim.stop();
+    } else {
+      pulseAnim.setValue(1);
     }
+  }, [callStatus]);
+
+  // ═══ HELPER FUNCTIONS ══════════════════════════════════════════════════
+  const checkDefaultDialer = async () => {
+    try { setIsDefault(await isDefaultDialer()); } catch (e) {}
   };
 
-  const handleMuteToggle = async () => {
-    const nextMute = !isMuted;
-    setIsMuted(nextMute);
-    await muteMicrophone(nextMute);
+  const fetchData = async () => {
+    try {
+      const [logs, conts, sims] = await Promise.all([
+        getRealCallLogs(), getRealContacts(), getSimCardsInfo()
+      ]);
+      if (logs && logs.length) setCallLogs(logs);
+      if (conts && conts.length) setContacts(conts);
+      if (sims && sims.length) setSimCards(sims);
+    } catch (e) {}
   };
 
-  const handleSpeakerToggle = async () => {
-    const nextSpeaker = !isSpeakerOn;
-    setIsSpeakerOn(nextSpeaker);
-    await enableSpeakerphone(nextSpeaker);
+  const refreshLogs = async () => {
+    try { setDebugLogs(await getDebugLogs() || ''); } catch (e) {}
   };
 
-  const handleHangup = async () => {
-    if (autoAnswerTimerRef.current) clearTimeout(autoAnswerTimerRef.current);
-    await stopAiVoiceResponse();
-    await endCall();
-    await fetchPhoneData();
-    setTimeout(fetchPhoneData, 1500);
-    setCallStatus('idle');
-  };
-
-  const handleDialpadPress = (val) => {
-    setDialedNumber((prev) => prev + val);
-  };
-
-  const handleDialpadDelete = () => {
-    setDialedNumber((prev) => prev.slice(0, -1));
-  };
-
-  const triggerCallSimSelection = (numToCall) => {
-    const target = numToCall || dialedNumber;
-    if (!target) return;
-    setPendingCallTarget(target);
-    setShowSimModal(true);
-  };
-
-  const confirmCallWithSim = async (simSlot) => {
-    const slotIndex = simSlot === 'SIM 1' ? 0 : 1;
-    setSelectedSim(simSlot);
-    setShowSimModal(false);
-    setCallerId(pendingCallTarget);
-    setCallStatus('outgoing');
-    await makeCall(pendingCallTarget, slotIndex);
-  };
-
-  const formatDuration = (secs) => {
+  const formatTime = (secs) => {
     const m = Math.floor(secs / 60).toString().padStart(2, '0');
     const s = (secs % 60).toString().padStart(2, '0');
     return `${m}:${s}`;
   };
 
-  const spin = rotationAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
+  const getInitial = (name) => {
+    if (!name) return '?';
+    const clean = name.replace(/[^a-zA-Z]/g, '');
+    return clean ? clean[0].toUpperCase() : '#';
+  };
 
-  const filteredContacts = contactsList.filter(
-    (c) => (c.name || '').toLowerCase().includes(contactSearch.toLowerCase()) || (c.number || '').includes(contactSearch)
+  // ═══ JARVIS AI FUNCTIONS ═══════════════════════════════════════════════
+  const startAiGreeting = async () => {
+    const greeting = "Hello, main Rahul ka assistant Jarvis bol raha hu. Rahul ji abhi busy hain, bataiye main kya message de du?";
+    setChatMessages([{ id: '1', sender: 'jarvis', text: greeting, time: new Date().toLocaleTimeString() }]);
+    setIsAiTalking(true);
+    await speakCallAudio(greeting);
+    setIsAiTalking(false);
+  };
+
+  const handleSendSpeech = async (customText) => {
+    const text = customText || speechInput;
+    if (!text.trim()) return;
+    const userMsg = { id: Date.now().toString(), sender: 'caller', text, time: new Date().toLocaleTimeString() };
+    setChatMessages(prev => [...prev, userMsg]);
+    if (!customText) setSpeechInput('');
+
+    setIsAiTalking(true);
+    const aiReply = await generateAiCallReply(text, chatMessages);
+    const aiMsg = { id: (Date.now() + 1).toString(), sender: 'jarvis', text: aiReply, time: new Date().toLocaleTimeString() };
+    setChatMessages(prev => [...prev, aiMsg]);
+    await speakAiVoiceResponse(aiReply, () => setIsAiTalking(false));
+  };
+
+  // ═══ CALL ACTIONS ══════════════════════════════════════════════════════
+  const toggleJarvis = () => {
+    const next = !jarvisEnabled;
+    setJarvisEnabled(next);
+    setAiEnabled(next);
+    if (next) {
+      Speech.stop();
+      Speech.speak("Welcome Sir. Jarvis autonomous system is online.", {
+        language: 'en-US', pitch: 1.0, rate: 0.9,
+      });
+    }
+  };
+
+  const handleAnswer = async () => {
+    if (aiCountdownRef.current) { clearInterval(aiCountdownRef.current); aiCountdownRef.current = null; }
+    await answerCall();
+    await enableSpeakerphone(true);
+    setIsSpeaker(true);
+  };
+
+  const handleHangup = async () => {
+    if (aiCountdownRef.current) { clearInterval(aiCountdownRef.current); aiCountdownRef.current = null; }
+    await stopAiVoiceResponse();
+    await endCall();
+    setCallStatus('idle');
+  };
+
+  const initiateCall = async (number, simSlot) => {
+    if (!number) return;
+    if (simCards.length > 1 && simSlot === undefined) {
+      setPendingCallTarget(number);
+      setShowSimModal(true);
+      return;
+    }
+    setShowSimModal(false);
+    setShowDialpad(false);
+    setCallerNumber(number);
+    setCallerName(number);
+    setCallStatus('outgoing');
+    isIncomingCallRef.current = false;
+    setChatMessages([]);
+    setCallDuration(0);
+    await makeCall(number, simSlot !== undefined ? simSlot : 0);
+  };
+
+  // ═══ FILTERED DATA ════════════════════════════════════════════════════
+  const filteredContacts = contacts.filter(c =>
+    (c.name || '').toLowerCase().includes(searchQuery.toLowerCase()) || (c.number || '').includes(searchQuery)
   );
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // RENDER
+  // ═══════════════════════════════════════════════════════════════════════
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.bg} />
+    <SafeAreaView style={s.container}>
+      <StatusBar barStyle="light-content" backgroundColor={C.bg} />
 
-      {/* Atmospheric Background Glows */}
-      <View style={styles.bgGlowTop} />
-      <View style={styles.bgGlowBottom} />
+      {/* ── HEADER BAR ────────────────────────────────────────────── */}
+      <View style={s.header}>
+        <Text style={s.headerTitle}>☎ Phone</Text>
+        <TouchableOpacity
+          style={[s.jarvisChip, jarvisEnabled && s.jarvisChipActive]}
+          onPress={toggleJarvis}
+          activeOpacity={0.7}
+        >
+          <View style={[s.jarvisDot, jarvisEnabled && s.jarvisDotActive]} />
+          <Text style={[s.jarvisChipText, jarvisEnabled && s.jarvisChipTextActive]}>
+            {jarvisEnabled ? 'JARVIS ON' : 'JARVIS'}
+          </Text>
+        </TouchableOpacity>
+      </View>
 
-      <Animated.View style={[styles.mainContent, { opacity: fadeInAnim }]}>
-        {/* Sleek Futuristic Top Header Bar */}
-        <View style={styles.headerBar}>
-          <View>
-            <Text style={styles.appTitle}>J.A.R.V.I.S</Text>
-            <Text style={styles.appSubtitle}>AUTONOMOUS AI CALL SYSTEM</Text>
-          </View>
-          <View style={[styles.statusPill, aiActive ? styles.statusPillActive : styles.statusPillOffline]}>
-            <View style={[styles.statusDot, aiActive ? styles.statusDotActive : styles.statusDotOffline]} />
-            <Text style={[styles.statusPillText, aiActive ? styles.statusTextActive : styles.statusTextOffline]}>
-              {aiActive ? 'ONLINE' : 'OFFLINE'}
-            </Text>
-          </View>
-        </View>
+      {/* ── TAB CONTENT ───────────────────────────────────────────── */}
 
-        {/* Dynamic Navigation Tab Bar */}
-        <View style={styles.navigationTabBar}>
-          {[
-            { id: 'jarvis', icon: '🤖', label: 'J.A.R.V.I.S' },
-            { id: 'contacts', icon: '👤', label: 'Contacts' },
-            { id: 'recents', icon: '🕒', label: 'Recents' },
-            { id: 'dialpad', icon: '⌨️', label: 'Keypad' },
-          ].map((tab) => {
-            const isActive = activeTab === tab.id;
+      {/* RECENTS TAB */}
+      {activeTab === 'recents' && (
+        <FlatList
+          data={callLogs}
+          keyExtractor={(item, i) => item.id || i.toString()}
+          style={s.listContainer}
+          contentContainerStyle={{ paddingBottom: 90 }}
+          initialNumToRender={20}
+          maxToRenderPerBatch={15}
+          windowSize={5}
+          removeClippedSubviews={true}
+          ListEmptyComponent={<Text style={s.emptyText}>No recent calls</Text>}
+          renderItem={({ item }) => {
+            const isMissed = item.type === 'missed';
+            const icon = item.type === 'incoming' ? '↙' : item.type === 'outgoing' ? '↗' : '✕';
+            const iconColor = isMissed ? C.red : item.type === 'incoming' ? C.green : C.accent;
             return (
-              <TouchableOpacity
-                key={tab.id}
-                style={[styles.navTabBtn, isActive && styles.navTabBtnActive]}
-                onPress={() => setActiveTab(tab.id)}
-              >
-                <Text style={styles.navTabIcon}>{tab.icon}</Text>
-                <Text style={[styles.navTabLabel, isActive && styles.navTabLabelActive]}>{tab.label}</Text>
+              <TouchableOpacity style={s.callLogItem} onPress={() => initiateCall(item.number)} activeOpacity={0.6}>
+                <View style={[s.callLogAvatar, isMissed && { borderColor: C.red }]}>
+                  <Text style={s.callLogAvatarText}>{getInitial(item.name || item.number)}</Text>
+                </View>
+                <View style={s.callLogInfo}>
+                  <Text style={[s.callLogName, isMissed && { color: C.red }]}>{item.name || item.number}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 3 }}>
+                    <Text style={[s.callLogIcon, { color: iconColor }]}>{icon}</Text>
+                    <Text style={s.callLogMeta}>{item.number} • {item.time}</Text>
+                  </View>
+                </View>
+                <TouchableOpacity style={s.callLogCallBtn} onPress={() => initiateCall(item.number)}>
+                  <Text style={{ color: C.green, fontSize: 18 }}>📞</Text>
+                </TouchableOpacity>
               </TouchableOpacity>
             );
-          })}
-        </View>
+          }}
+        />
+      )}
 
-        {/* TAB 1: J.A.R.V.I.S REACTOR CORE CONTROL CENTER */}
-        {activeTab === 'jarvis' && (
-          <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
-            {/* Glowing Reactor Core Unit */}
-            <View style={styles.reactorSection}>
-              <View style={styles.reactorCoreRingContainer}>
-                <Animated.View style={[styles.reactorOuterRing, { transform: [{ rotate: spin }] }]} />
-                <Animated.View style={[styles.reactorPulseRing, { transform: [{ scale: pulseAnim }] }]} />
-
-                <TouchableOpacity style={styles.reactorCoreButton} onPress={toggleAI} activeOpacity={0.8}>
-                  <Text style={styles.reactorButtonIcon}>{aiActive ? '⚡' : '⭕'}</Text>
-                  <Text style={styles.reactorButtonTitle}>{aiActive ? 'SYSTEM ONLINE' : 'SYSTEM OFFLINE'}</Text>
-                  <Text style={styles.reactorButtonSub}>{aiActive ? 'TOUCH TO DEACTIVATE' : 'TOUCH TO ACTIVATE'}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* System Controls & Authorization Card */}
-            <View style={styles.glassCard}>
-              <Text style={styles.cardHeaderTitle}>SYSTEM AUTHORIZATION & CONTROLS</Text>
-
-              <TouchableOpacity
-                style={[styles.actionBtnBlock, isDefault ? styles.btnBlockSuccess : styles.btnBlockDanger]}
-                onPress={async () => {
-                  await requestDefaultDialer();
-                  await checkDefaultStatus();
-                }}
-              >
-                <Text style={[styles.btnBlockText, { color: isDefault ? COLORS.neonGreen : COLORS.neonRed }]}>
-                  {isDefault ? '✓ DEFAULT PHONE ASSISTANT ACTIVE' : '⚡ SET AS DEFAULT DIALER'}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={[styles.actionBtnBlock, { marginTop: 10, borderColor: COLORS.neonCyan }]} onPress={handlePermissions}>
-                <Text style={[styles.btnBlockText, { color: COLORS.neonCyan }]}>GRANT DIALER PERMISSIONS</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Live System Debugger Console Card */}
-            <View style={[styles.glassCard, { marginTop: 14 }]}>
-              <View style={styles.cardHeaderRow}>
-                <Text style={styles.cardHeaderTitle}>LIVE ENGINE LOG DIAGNOSTICS</Text>
-                <TouchableOpacity onPress={refreshLogs}>
-                  <Text style={styles.refreshBtnText}>🔄 REFRESH</Text>
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView style={styles.consoleBox} nestedScrollEnabled={true}>
-                <Text style={styles.consoleText}>{debugLogs || 'No system logs recorded yet.'}</Text>
-              </ScrollView>
-
-              <TouchableOpacity
-                style={styles.clearLogsBtn}
-                onPress={async () => {
-                  await clearDebugLogs();
-                  await refreshLogs();
-                }}
-              >
-                <Text style={styles.clearLogsBtnText}>CLEAR DIAGNOSTIC LOGS</Text>
-              </TouchableOpacity>
-            </View>
-          </ScrollView>
-        )}
-
-        {/* TAB 2: CONTACTS BOOK */}
-        {activeTab === 'contacts' && (
-          <View style={{ flex: 1 }}>
-            <View style={styles.searchBarContainer}>
-              <Text style={styles.searchIcon}>🔍</Text>
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search 5000+ Contacts..."
-                placeholderTextColor={COLORS.textDim}
-                value={contactSearch}
-                onChangeText={setContactSearch}
-              />
-            </View>
-
-            <FlatList
-              data={filteredContacts}
-              keyExtractor={(item) => item.id || item.number}
-              initialNumToRender={15}
-              maxToRenderPerBatch={10}
-              windowSize={5}
-              removeClippedSubviews={true}
-              showsVerticalScrollIndicator={false}
-              renderItem={({ item: contact }) => {
-                const hasName = contact.name && contact.name !== contact.number;
-                const displayName = hasName ? contact.name : contact.number;
-                const displayNum = hasName ? contact.number : '';
-                const initialChar = hasName ? contact.name[0].toUpperCase() : '👤';
-
-                return (
-                  <View style={styles.contactItemCard}>
-                    <View style={styles.avatarCircle}>
-                      <Text style={styles.avatarInitialText}>{initialChar}</Text>
-                    </View>
-
-                    <View style={{ flex: 1, marginLeft: 14 }}>
-                      <Text style={styles.contactItemName}>{displayName}</Text>
-                      {displayNum ? <Text style={styles.contactItemNumber}>{displayNum}</Text> : null}
-                    </View>
-
-                    <TouchableOpacity style={styles.dialIconBtn} onPress={() => triggerCallSimSelection(contact.number)}>
-                      <Text style={{ fontSize: 20 }}>📞</Text>
-                    </TouchableOpacity>
-                  </View>
-                );
-              }}
+      {/* CONTACTS TAB */}
+      {activeTab === 'contacts' && (
+        <View style={s.listContainer}>
+          <View style={s.searchBar}>
+            <Text style={{ fontSize: 16, marginRight: 8 }}>🔍</Text>
+            <TextInput
+              style={s.searchInput}
+              placeholder="Search contacts..."
+              placeholderTextColor={C.textDim}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
             />
           </View>
-        )}
-
-        {/* TAB 3: RECENT CALL HISTORY */}
-        {activeTab === 'recents' && (
-          <View style={{ flex: 1 }}>
-            <Text style={styles.sectionHeaderTitle}>RECENT CALL LOG HISTORY</Text>
-            <FlatList
-              data={callLogsList}
-              keyExtractor={(item) => item.id || item.time + Math.random()}
-              initialNumToRender={15}
-              maxToRenderPerBatch={10}
-              windowSize={5}
-              removeClippedSubviews={true}
-              showsVerticalScrollIndicator={false}
-              renderItem={({ item: log }) => (
-                <View style={styles.contactItemCard}>
-                  <View style={[styles.avatarCircle, { backgroundColor: log.type === 'missed' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(0, 240, 255, 0.15)' }]}>
-                    <Text style={{ fontSize: 18 }}>
-                      {log.type === 'incoming' ? '📥' : log.type === 'outgoing' ? '📤' : '❌'}
-                    </Text>
+          <FlatList
+            data={filteredContacts}
+            keyExtractor={(item, i) => item.id || i.toString()}
+            contentContainerStyle={{ paddingBottom: 90 }}
+            initialNumToRender={20}
+            maxToRenderPerBatch={15}
+            windowSize={5}
+            removeClippedSubviews={true}
+            ListEmptyComponent={<Text style={s.emptyText}>No contacts found</Text>}
+            renderItem={({ item }) => {
+              const hasName = item.name && item.name !== item.number;
+              return (
+                <TouchableOpacity style={s.contactItem} onPress={() => initiateCall(item.number)} activeOpacity={0.6}>
+                  <View style={s.contactAvatar}>
+                    <Text style={s.contactAvatarText}>{hasName ? item.name[0].toUpperCase() : '👤'}</Text>
                   </View>
-
-                  <View style={{ flex: 1, marginLeft: 14 }}>
-                    <Text style={styles.contactItemName}>{log.name || log.number}</Text>
-                    <Text style={styles.contactItemNumber}>
-                      {log.number} • {log.time}
-                    </Text>
+                  <View style={s.contactInfo}>
+                    <Text style={s.contactName}>{hasName ? item.name : item.number}</Text>
+                    {hasName && <Text style={s.contactNumber}>{item.number}</Text>}
                   </View>
-
-                  <TouchableOpacity style={styles.dialIconBtn} onPress={() => triggerCallSimSelection(log.number)}>
-                    <Text style={{ fontSize: 20 }}>📞</Text>
+                  <TouchableOpacity style={s.contactCallBtn} onPress={() => initiateCall(item.number)}>
+                    <Text style={{ color: C.green, fontSize: 18 }}>📞</Text>
                   </TouchableOpacity>
-                </View>
-              )}
-            />
-          </View>
-        )}
-
-        {/* TAB 4: HIGH-TECH KEYPAD DIALER */}
-        {activeTab === 'dialpad' && (
-          <View style={styles.dialpadContainer}>
-            <View style={styles.dialedNumberDisplay}>
-              <Text style={styles.dialedNumberText}>{dialedNumber || 'Enter Phone Number'}</Text>
-              {dialedNumber.length > 0 && (
-                <TouchableOpacity style={styles.deleteBtn} onPress={handleDialpadDelete}>
-                  <Text style={styles.deleteBtnText}>⌫</Text>
                 </TouchableOpacity>
-              )}
-            </View>
+              );
+            }}
+          />
+        </View>
+      )}
 
-            {/* Keypad Grid */}
-            <View style={styles.keypadGrid}>
-              {[
-                { num: '1', sub: '' },
-                { num: '2', sub: 'ABC' },
-                { num: '3', sub: 'DEF' },
-                { num: '4', sub: 'GHI' },
-                { num: '5', sub: 'JKL' },
-                { num: '6', sub: 'MNO' },
-                { num: '7', sub: 'PQRS' },
-                { num: '8', sub: 'TUV' },
-                { num: '9', sub: 'WXYZ' },
-                { num: '*', sub: '' },
-                { num: '0', sub: '+' },
-                { num: '#', sub: '' },
-              ].map((key) => (
-                <TouchableOpacity key={key.num} style={styles.keypadBtn} onPress={() => handleDialpadPress(key.num)}>
-                  <Text style={styles.keypadNumText}>{key.num}</Text>
-                  {key.sub ? <Text style={styles.keypadSubText}>{key.sub}</Text> : null}
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {/* Action Call Button */}
-            <View style={styles.dialpadActionRow}>
-              <TouchableOpacity
-                style={[styles.bigCallBtn, !dialedNumber && { opacity: 0.5 }]}
-                disabled={!dialedNumber}
-                onPress={() => triggerCallSimSelection()}
-              >
-                <Text style={styles.bigCallBtnIcon}>📞</Text>
-                <Text style={styles.bigCallBtnText}>PLACE CELLULAR CALL</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-      </Animated.View>
-
-      {/* DUAL SIM SELECTION MODAL */}
-      <Modal transparent={true} visible={showSimModal} animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.simModalBox}>
-            <Text style={styles.simModalTitle}>SELECT CELLULAR LINE</Text>
-            <Text style={styles.simModalSub}>Placing call to: {pendingCallTarget}</Text>
-
-            {simCardsList.map((sim, idx) => (
-              <TouchableOpacity
-                key={idx}
-                style={styles.simOptionCard}
-                onPress={() => confirmCallWithSim(`SIM ${sim.slot + 1}`)}
-              >
-                <View style={[styles.simBadgeCircle, idx === 1 && { backgroundColor: COLORS.neonBlue }]}>
-                  <Text style={styles.simBadgeText}>{sim.slot + 1}</Text>
-                </View>
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={styles.simNameText}>{sim.name}</Text>
-                  <Text style={styles.simCarrierText}>{sim.carrier}</Text>
-                </View>
-                <Text style={{ fontSize: 20 }}>📶</Text>
-              </TouchableOpacity>
-            ))}
-
-            <TouchableOpacity style={styles.cancelSimBtn} onPress={() => setShowSimModal(false)}>
-              <Text style={styles.cancelSimBtnText}>CANCEL</Text>
+      {/* SETTINGS TAB */}
+      {activeTab === 'settings' && (
+        <ScrollView style={s.listContainer} contentContainerStyle={{ paddingBottom: 90 }}>
+          <View style={s.settingsSection}>
+            <Text style={s.settingsSectionTitle}>JARVIS AI</Text>
+            <TouchableOpacity style={s.settingsRow} onPress={toggleJarvis}>
+              <Text style={s.settingsLabel}>Jarvis AI Assistant</Text>
+              <View style={[s.toggleTrack, jarvisEnabled && s.toggleTrackActive]}>
+                <View style={[s.toggleThumb, jarvisEnabled && s.toggleThumbActive]} />
+              </View>
             </TouchableOpacity>
           </View>
-        </View>
+
+          <View style={s.settingsSection}>
+            <Text style={s.settingsSectionTitle}>PHONE SETUP</Text>
+            <TouchableOpacity
+              style={s.settingsRow}
+              onPress={async () => { await requestDefaultDialer(); await checkDefaultDialer(); }}
+            >
+              <Text style={s.settingsLabel}>Default Phone App</Text>
+              <Text style={[s.settingsBadge, isDefault && s.settingsBadgeActive]}>
+                {isDefault ? '✓ Active' : 'Set Up'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={s.settingsRow}
+              onPress={async () => { await requestPermissions(); await checkDefaultDialer(); await fetchData(); }}
+            >
+              <Text style={s.settingsLabel}>Grant Permissions</Text>
+              <Text style={{ color: C.accent, fontSize: 13 }}>→</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={s.settingsSection}>
+            <Text style={s.settingsSectionTitle}>DEBUG CONSOLE</Text>
+            <View style={s.debugBox}>
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 8 }}>
+                <TouchableOpacity onPress={refreshLogs} style={{ marginRight: 14 }}>
+                  <Text style={{ color: C.accent, fontSize: 12 }}>🔄 Refresh</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={async () => { await clearDebugLogs(); setDebugLogs(''); }}>
+                  <Text style={{ color: C.red, fontSize: 12 }}>Clear</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={{ maxHeight: 240 }} nestedScrollEnabled>
+                <Text style={s.debugText}>{debugLogs || 'Tap "Refresh" to load logs...'}</Text>
+              </ScrollView>
+            </View>
+          </View>
+        </ScrollView>
+      )}
+
+      {/* ── FAB (Floating Action Button) ──────────────────────────── */}
+      <TouchableOpacity style={s.fab} onPress={() => setShowDialpad(true)} activeOpacity={0.8}>
+        <Text style={{ fontSize: 22 }}>⌨️</Text>
+      </TouchableOpacity>
+
+      {/* ── BOTTOM TAB BAR ────────────────────────────────────────── */}
+      <View style={s.bottomBar}>
+        {[
+          { id: 'recents', icon: '🕒', label: 'Recents' },
+          { id: 'contacts', icon: '👤', label: 'Contacts' },
+          { id: 'settings', icon: '⚙️', label: 'Settings' },
+        ].map(tab => (
+          <TouchableOpacity key={tab.id} style={s.bottomTab} onPress={() => setActiveTab(tab.id)}>
+            <Text style={{ fontSize: 18 }}>{tab.icon}</Text>
+            <Text style={[s.bottomTabText, activeTab === tab.id && s.bottomTabTextActive]}>{tab.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* ══════════════════════════════════════════════════════════════
+          DIALPAD MODAL
+         ══════════════════════════════════════════════════════════════ */}
+      <Modal visible={showDialpad} animationType="slide" transparent={false}>
+        <SafeAreaView style={s.dialpadScreen}>
+          <View style={s.dialpadHeader}>
+            <TouchableOpacity onPress={() => setShowDialpad(false)}>
+              <Text style={{ color: C.accent, fontSize: 16 }}>← Back</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={s.dialpadDisplay}>
+            <Text style={s.dialpadNumber} numberOfLines={1} adjustsFontSizeToFit>{dialNumber || 'Enter number'}</Text>
+          </View>
+          <View style={s.keypadGrid}>
+            {[
+              { n: '1', sub: '' },    { n: '2', sub: 'ABC' },  { n: '3', sub: 'DEF' },
+              { n: '4', sub: 'GHI' }, { n: '5', sub: 'JKL' },  { n: '6', sub: 'MNO' },
+              { n: '7', sub: 'PQRS' },{ n: '8', sub: 'TUV' },  { n: '9', sub: 'WXYZ' },
+              { n: '*', sub: '' },    { n: '0', sub: '+' },    { n: '#', sub: '' },
+            ].map(k => (
+              <TouchableOpacity key={k.n} style={s.keyBtn} onPress={() => setDialNumber(p => p + k.n)} activeOpacity={0.5}>
+                <Text style={s.keyNum}>{k.n}</Text>
+                {k.sub ? <Text style={s.keySub}>{k.sub}</Text> : null}
+              </TouchableOpacity>
+            ))}
+          </View>
+          <View style={s.dialpadActions}>
+            <View style={{ width: 56 }} />
+            <TouchableOpacity
+              style={[s.dialCallBtn, !dialNumber && { opacity: 0.4 }]}
+              disabled={!dialNumber}
+              onPress={() => initiateCall(dialNumber)}
+              activeOpacity={0.7}
+            >
+              <PhoneIcon size={28} />
+            </TouchableOpacity>
+            <TouchableOpacity style={{ width: 56, alignItems: 'center', justifyContent: 'center' }} onPress={() => setDialNumber(p => p.slice(0, -1))}>
+              <Text style={{ color: C.textSec, fontSize: 22 }}>⌫</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
       </Modal>
 
-      {/* FULL-SCREEN IN-CALL SYSTEM OVERLAY NATIVE MODAL */}
-      <Modal
-        visible={callStatus === 'ringing' || callStatus === 'active' || callStatus === 'outgoing'}
-        animationType="slide"
-        statusBarTranslucent={true}
-        onRequestClose={handleHangup}
-      >
-        <View style={styles.fullInCallContainer}>
-          {callStatus === 'ringing' ? (
-            /* INCOMING CALL BANNER SCREEN */
-            <View style={styles.incomingContainer}>
-              <View style={styles.incomingTagBadge}>
-                <View style={styles.pulseDotRed} />
-                <Text style={styles.incomingTagText}>INCOMING TELECOM CALL TRANSMISSION</Text>
-              </View>
+      {/* ══════════════════════════════════════════════════════════════
+          FULL SCREEN IN-CALL MODAL
+         ══════════════════════════════════════════════════════════════ */}
+      <Modal visible={callStatus !== 'idle'} animationType="slide" transparent={false} statusBarTranslucent onRequestClose={handleHangup}>
+        <View style={s.callScreen}>
+          <StatusBar barStyle="light-content" backgroundColor={C.bg} />
 
-              <View style={styles.glowingAvatarBox}>
-                <Animated.View style={[styles.avatarPulseWaveRing, { transform: [{ scale: pulseAnim }] }]} />
-                <View style={styles.avatarCircleBig}>
-                  <Text style={styles.avatarInitialBig}>{callerId ? callerId[0].toUpperCase() : '📞'}</Text>
+          {/* ── INCOMING CALL ─────────────────────────────────────── */}
+          {callStatus === 'ringing' && (
+            <View style={s.incomingScreen}>
+              <Text style={s.incomingLabel}>Incoming call</Text>
+              <Animated.View style={[s.incomingAvatarWrap, { transform: [{ scale: pulseAnim }] }]}>
+                <View style={s.incomingAvatarRing} />
+                <View style={s.incomingAvatar}>
+                  <Text style={s.incomingAvatarText}>{getInitial(callerName)}</Text>
                 </View>
-              </View>
-
-              <Text style={styles.incomingCallerTitle}>{callerId || 'Incoming Call'}</Text>
-              <Text style={styles.incomingCallerSubTitle}>Cellular Voice Line • India</Text>
-
-              {aiActive && (
-                <View style={styles.aiTagCard}>
-                  <Text style={styles.aiTagCardText}>🤖 J.A.R.V.I.S AUTO-ANSWER ACTIVE (10s)</Text>
+              </Animated.View>
+              <Text style={s.incomingName}>{callerName || 'Unknown'}</Text>
+              <Text style={s.incomingNumber}>{callerNumber}</Text>
+              {jarvisEnabled && (
+                <View style={s.jarvisCountdownBadge}>
+                  <Text style={s.jarvisCountdownText}>🤖 Jarvis answering in {aiCountdown}s</Text>
                 </View>
               )}
-
-              {/* Action Buttons Row */}
-              <View style={styles.incomingActionRowBtns}>
-                <TouchableOpacity style={styles.circleCallActionBtn} onPress={handleHangup}>
-                  <View style={[styles.circleIconBox, { backgroundColor: COLORS.neonRed }]}>
-                    <PureVectorCallEndIcon />
-                  </View>
-                  <Text style={[styles.actionBtnLabelText, { color: COLORS.neonRed }]}>Decline</Text>
+              <View style={{ flex: 1 }} />
+              <View style={s.incomingActions}>
+                <TouchableOpacity style={s.declineBtn} onPress={handleHangup} activeOpacity={0.7}>
+                  <PhoneEndIcon size={28} />
                 </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.circleCallActionBtn}
-                  onPress={async () => {
-                    if (autoAnswerTimerRef.current) clearTimeout(autoAnswerTimerRef.current);
-                    await answerCall();
-                    await enableSpeakerphone(true);
-                    setIsSpeakerOn(true);
-                    setCallStatus('active');
-                  }}
-                >
-                  <View style={[styles.circleIconBox, { backgroundColor: COLORS.neonGreen }]}>
-                    <Text style={{ fontSize: 26, color: '#000' }}>📞</Text>
-                  </View>
-                  <Text style={[styles.actionBtnLabelText, { color: COLORS.neonGreen }]}>Answer</Text>
+                <TouchableOpacity style={s.answerBtn} onPress={handleAnswer} activeOpacity={0.7}>
+                  <PhoneIcon size={28} />
                 </TouchableOpacity>
               </View>
-            </View>
-          ) : (
-            /* ACTIVE IN-CALL & OUTGOING CHAT BUBBLES VIEW */
-            <View style={{ flex: 1, padding: 24 }}>
-              <View style={styles.activeCallHeaderCard}>
-                <View>
-                  <Text style={styles.activeCallerTitle}>{callerId || 'Active Call'}</Text>
-                  <Text style={styles.activeCallerSubTitle}>
-                    {selectedSim} • {callStatus === 'outgoing' ? 'DIALING RECEIVER...' : formatDuration(callDuration)}
-                  </Text>
-                </View>
-
-                <TouchableOpacity style={styles.hangupCircleSmallBtn} onPress={handleHangup}>
-                  <PureVectorCallEndIcon />
-                </TouchableOpacity>
-              </View>
-
-              {/* Call Controls Bar */}
-              <View style={styles.inCallControlsRow}>
-                <TouchableOpacity style={[styles.controlPillBtn, isMuted && styles.controlPillActive]} onPress={handleMuteToggle}>
-                  <Text style={styles.controlPillIcon}>{isMuted ? '🔇' : '🎙️'}</Text>
-                  <Text style={styles.controlPillLabel}>{isMuted ? 'UNMUTE' : 'MUTE'}</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={[styles.controlPillBtn, isSpeakerOn && styles.controlPillActive]} onPress={handleSpeakerToggle}>
-                  <Text style={styles.controlPillIcon}>{isSpeakerOn ? '🔊' : '🔈'}</Text>
-                  <Text style={styles.controlPillLabel}>SPEAKER</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={[styles.controlPillBtn, aiActive && styles.controlPillActive]} onPress={toggleAI}>
-                  <Text style={styles.controlPillIcon}>🤖</Text>
-                  <Text style={styles.controlPillLabel}>J.A.R.V.I.S</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Live Conversation Chat Feed */}
-              <View style={styles.chatFeedCardBox}>
-                <View style={styles.chatHeaderRowBox}>
-                  <Text style={styles.chatTitleText}>LIVE AI CONVERSATION FEED</Text>
-                  {isAiTalking && (
-                    <View style={styles.talkingBadgeBox}>
-                      <Text style={styles.talkingBadgeText}>🎙️ J.A.R.V.I.S SPEAKING</Text>
-                    </View>
-                  )}
-                </View>
-
-                <ScrollView style={styles.chatFeedScroll} showsVerticalScrollIndicator={false}>
-                  {conversation.map((msg) => (
-                    <View key={msg.id} style={[styles.msgBubble, msg.sender === 'jarvis' ? styles.msgJarvis : styles.msgCaller]}>
-                      <Text style={styles.msgSenderLabel}>{msg.sender === 'jarvis' ? '🤖 J.A.R.V.I.S' : '👤 CALLER'}</Text>
-                      <Text style={styles.msgTextContent}>{msg.text}</Text>
-                      <Text style={styles.msgTimeLabel}>{msg.time}</Text>
-                    </View>
-                  ))}
-                </ScrollView>
-              </View>
-
-              {/* Live Speech Simulation Input */}
-              <View style={styles.speechSimulationInputRow}>
-                <TextInput
-                  style={styles.speechTextInputField}
-                  placeholder="Simulate Caller Speech..."
-                  placeholderTextColor={COLORS.textDim}
-                  value={speechInput}
-                  onChangeText={setSpeechInput}
-                  onSubmitEditing={() => handleSendSpeechInput()}
-                />
-                <TouchableOpacity style={styles.speechSendBtn} onPress={() => handleSendSpeechInput()}>
-                  <Text style={styles.speechSendBtnText}>SPEAK</Text>
-                </TouchableOpacity>
+              <View style={s.incomingLabelsRow}>
+                <Text style={s.incomingActionLabel}>Decline</Text>
+                <Text style={s.incomingActionLabel}>Answer</Text>
               </View>
             </View>
           )}
+
+          {/* ── OUTGOING CALL ─────────────────────────────────────── */}
+          {callStatus === 'outgoing' && (
+            <View style={s.outgoingScreen}>
+              <Text style={s.outgoingLabel}>Calling...</Text>
+              <View style={s.outgoingAvatar}>
+                <Text style={s.outgoingAvatarText}>{getInitial(callerName)}</Text>
+              </View>
+              <Text style={s.outgoingName}>{callerName || 'Unknown'}</Text>
+              <Text style={s.outgoingNumber}>{callerNumber}</Text>
+              <Text style={s.outgoingStatus}>Dialing...</Text>
+              <View style={{ flex: 1 }} />
+              <View style={s.outgoingControls}>
+                <TouchableOpacity style={s.ctrlCircle} onPress={async () => { await muteMicrophone(!isMuted); setIsMuted(!isMuted); }}>
+                  <Text style={s.ctrlIcon}>{isMuted ? '🔇' : '🎙️'}</Text>
+                  <Text style={s.ctrlLabel}>Mute</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={s.ctrlCircle} onPress={async () => { await enableSpeakerphone(!isSpeaker); setIsSpeaker(!isSpeaker); }}>
+                  <Text style={s.ctrlIcon}>{isSpeaker ? '🔊' : '🔈'}</Text>
+                  <Text style={s.ctrlLabel}>Speaker</Text>
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity style={s.endCallBtn} onPress={handleHangup} activeOpacity={0.7}>
+                <PhoneEndIcon size={30} />
+              </TouchableOpacity>
+              <Text style={s.endCallLabel}>End Call</Text>
+            </View>
+          )}
+
+          {/* ── ACTIVE CONNECTED CALL ─────────────────────────────── */}
+          {callStatus === 'active' && (
+            <View style={s.activeScreen}>
+              <View style={s.activeHeader}>
+                <Text style={s.activeName}>{callerName || 'Unknown'}</Text>
+                <Text style={s.activeTimer}>{formatTime(callDuration)}</Text>
+              </View>
+
+              {/* Jarvis Chat Area (only for incoming AI calls) */}
+              {chatMessages.length > 0 && (
+                <View style={s.chatArea}>
+                  <View style={s.chatHeader}>
+                    <Text style={s.chatTitle}>🤖 Jarvis</Text>
+                    {isAiTalking && <Text style={s.chatSpeaking}>Speaking...</Text>}
+                  </View>
+                  <ScrollView style={s.chatScroll} showsVerticalScrollIndicator={false}>
+                    {chatMessages.map(msg => (
+                      <View key={msg.id} style={[s.chatBubble, msg.sender === 'jarvis' ? s.chatBubbleAi : s.chatBubbleUser]}>
+                        <Text style={s.chatSender}>{msg.sender === 'jarvis' ? '🤖 Jarvis' : '👤 Caller'}</Text>
+                        <Text style={s.chatText}>{msg.text}</Text>
+                        <Text style={s.chatTime}>{msg.time}</Text>
+                      </View>
+                    ))}
+                  </ScrollView>
+                  {/* Speech simulation input */}
+                  <View style={s.chatInputRow}>
+                    <TextInput
+                      style={s.chatInput}
+                      placeholder="Simulate caller speech..."
+                      placeholderTextColor={C.textDim}
+                      value={speechInput}
+                      onChangeText={setSpeechInput}
+                      onSubmitEditing={() => handleSendSpeech()}
+                    />
+                    <TouchableOpacity style={s.chatSendBtn} onPress={() => handleSendSpeech()}>
+                      <Text style={{ color: '#000', fontWeight: '900', fontSize: 13 }}>SEND</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
+              <View style={{ flex: chatMessages.length > 0 ? 0 : 1 }} />
+
+              {/* Control Buttons Grid (2 rows of 3) */}
+              <View style={s.controlGrid}>
+                <TouchableOpacity style={[s.ctrlCircle, isMuted && s.ctrlCircleActive]} onPress={async () => { await muteMicrophone(!isMuted); setIsMuted(!isMuted); }}>
+                  <Text style={s.ctrlIcon}>{isMuted ? '🔇' : '🎙️'}</Text>
+                  <Text style={s.ctrlLabel}>{isMuted ? 'Unmute' : 'Mute'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={s.ctrlCircle} onPress={() => {}}>
+                  <Text style={s.ctrlIcon}>⌨️</Text>
+                  <Text style={s.ctrlLabel}>Keypad</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.ctrlCircle, isSpeaker && s.ctrlCircleActive]} onPress={async () => { await enableSpeakerphone(!isSpeaker); setIsSpeaker(!isSpeaker); }}>
+                  <Text style={s.ctrlIcon}>{isSpeaker ? '🔊' : '🔈'}</Text>
+                  <Text style={s.ctrlLabel}>Speaker</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.ctrlCircle, jarvisEnabled && s.ctrlCircleActive]} onPress={toggleJarvis}>
+                  <Text style={s.ctrlIcon}>🤖</Text>
+                  <Text style={s.ctrlLabel}>Jarvis</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={s.ctrlCircle} onPress={() => {}}>
+                  <Text style={s.ctrlIcon}>⏸️</Text>
+                  <Text style={s.ctrlLabel}>Hold</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={s.ctrlCircle} onPress={() => {}}>
+                  <Text style={s.ctrlIcon}>➕</Text>
+                  <Text style={s.ctrlLabel}>Add call</Text>
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity style={s.endCallBtn} onPress={handleHangup} activeOpacity={0.7}>
+                <PhoneEndIcon size={30} />
+              </TouchableOpacity>
+              <Text style={s.endCallLabel}>End Call</Text>
+            </View>
+          )}
+        </View>
+      </Modal>
+
+      {/* ══════════════════════════════════════════════════════════════
+          DUAL SIM MODAL
+         ══════════════════════════════════════════════════════════════ */}
+      <Modal visible={showSimModal} transparent animationType="fade">
+        <View style={s.simOverlay}>
+          <View style={s.simBox}>
+            <Text style={s.simTitle}>Select SIM</Text>
+            <Text style={s.simSubtitle}>Calling: {pendingCallTarget}</Text>
+            {simCards.map((sim, i) => (
+              <TouchableOpacity key={i} style={s.simOption} onPress={() => initiateCall(pendingCallTarget, sim.slot)}>
+                <View style={[s.simBadge, i === 1 && { backgroundColor: C.accent }]}>
+                  <Text style={s.simBadgeText}>{(sim.slot || 0) + 1}</Text>
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={s.simName}>{sim.name || `SIM ${(sim.slot || 0) + 1}`}</Text>
+                  <Text style={s.simCarrier}>{sim.carrier || ''}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity style={s.simCancel} onPress={() => setShowSimModal(false)}>
+              <Text style={{ color: C.red, fontSize: 14, fontWeight: '600' }}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </Modal>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.bg,
-  },
-  bgGlowTop: {
-    position: 'absolute',
-    top: -120,
-    right: -60,
-    width: 320,
-    height: 320,
-    borderRadius: 160,
-    backgroundColor: COLORS.neonCyan,
-    opacity: 0.12,
-  },
-  bgGlowBottom: {
-    position: 'absolute',
-    bottom: -150,
-    left: -80,
-    width: 380,
-    height: 380,
-    borderRadius: 190,
-    backgroundColor: COLORS.neonBlue,
-    opacity: 0.1,
-  },
-  mainContent: {
-    flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: StatusBar.currentHeight ? StatusBar.currentHeight + 10 : 20,
-  },
-  headerBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  appTitle: {
-    fontSize: 26,
-    fontWeight: '900',
-    color: COLORS.text,
-    letterSpacing: 2,
-  },
-  appSubtitle: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: COLORS.neonCyan,
-    letterSpacing: 1.5,
-    marginTop: 2,
-  },
-  statusPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  statusPillActive: {
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    borderColor: COLORS.neonGreen,
-  },
-  statusPillOffline: {
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-    borderColor: COLORS.neonRed,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6,
-  },
-  statusDotActive: {
-    backgroundColor: COLORS.neonGreen,
-  },
-  statusDotOffline: {
-    backgroundColor: COLORS.neonRed,
-  },
-  statusPillText: {
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
-  statusTextActive: {
-    color: COLORS.neonGreen,
-  },
-  statusTextOffline: {
-    color: COLORS.neonRed,
-  },
-  // Floating Tab Navigation Bar
-  navigationTabBar: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.bgCardSolid,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: COLORS.glassBorder,
-    padding: 4,
-    marginBottom: 18,
-    elevation: 8,
-  },
-  navTabBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    borderRadius: 14,
-  },
-  navTabBtnActive: {
-    backgroundColor: 'rgba(0, 240, 255, 0.18)',
-    borderWidth: 1,
-    borderColor: COLORS.neonCyan,
-  },
-  navTabIcon: {
-    fontSize: 14,
-    marginRight: 4,
-  },
-  navTabLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.textDim,
-  },
-  navTabLabelActive: {
-    color: COLORS.text,
-    fontWeight: '900',
-  },
-  // Reactor Core Section
-  reactorSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: 20,
-  },
-  reactorCoreRingContainer: {
-    width: 220,
-    height: 220,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  reactorOuterRing: {
-    position: 'absolute',
-    width: 210,
-    height: 210,
-    borderRadius: 105,
-    borderWidth: 2,
-    borderColor: COLORS.neonCyan,
-    borderStyle: 'dashed',
-    opacity: 0.6,
-  },
-  reactorPulseRing: {
-    position: 'absolute',
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: 'rgba(0, 240, 255, 0.12)',
-    borderWidth: 1.5,
-    borderColor: COLORS.neonCyan,
-  },
-  reactorCoreButton: {
-    width: 145,
-    height: 145,
-    borderRadius: 72.5,
-    backgroundColor: COLORS.bgCardSolid,
-    borderWidth: 2,
-    borderColor: COLORS.neonCyan,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 15,
-    shadowColor: COLORS.neonCyan,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 15,
-  },
-  reactorButtonIcon: {
-    fontSize: 32,
-  },
-  reactorButtonTitle: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: COLORS.text,
-    letterSpacing: 1,
-    marginTop: 4,
-  },
-  reactorButtonSub: {
-    fontSize: 8,
-    fontWeight: '800',
-    color: COLORS.neonCyan,
-    letterSpacing: 0.8,
-    marginTop: 2,
-  },
-  // Cards & Layout
-  glassCard: {
-    backgroundColor: COLORS.bgCardSolid,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.glassBorder,
-    padding: 18,
-    elevation: 6,
-  },
-  cardHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  cardHeaderTitle: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: COLORS.neonCyan,
-    letterSpacing: 1.2,
-    marginBottom: 12,
-  },
-  actionBtnBlock: {
-    paddingVertical: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  btnBlockSuccess: {
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    borderColor: COLORS.neonGreen,
-  },
-  btnBlockDanger: {
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-    borderColor: COLORS.neonRed,
-  },
-  btnBlockText: {
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
-  refreshBtnText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: COLORS.neonCyan,
-  },
-  consoleBox: {
-    height: 140,
-    backgroundColor: '#02050E',
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  consoleText: {
-    fontFamily: 'monospace',
-    fontSize: 11,
-    color: COLORS.neonCyan,
-    lineHeight: 16,
-  },
-  clearLogsBtn: {
-    marginTop: 10,
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  clearLogsBtnText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: COLORS.neonRed,
-  },
-  // Contacts & Recents List Styling
-  searchBarContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.bgCardSolid,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.glassBorder,
-    paddingHorizontal: 14,
-    marginBottom: 14,
-  },
-  searchIcon: {
-    fontSize: 16,
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    height: 46,
-    color: COLORS.text,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  sectionHeaderTitle: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: COLORS.neonCyan,
-    letterSpacing: 1.2,
-    marginBottom: 12,
-  },
-  contactItemCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.bgCardSolid,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    padding: 14,
-    marginBottom: 10,
-  },
-  avatarCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(0, 240, 255, 0.15)',
-    borderWidth: 1,
-    borderColor: COLORS.neonCyan,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitialText: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: COLORS.text,
-  },
-  contactItemName: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: COLORS.text,
-  },
-  contactItemNumber: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.textSub,
-    marginTop: 2,
-  },
-  dialIconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(16, 185, 129, 0.18)',
-    borderWidth: 1,
-    borderColor: COLORS.neonGreen,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // High-Tech Keypad
-  dialpadContainer: {
-    flex: 1,
-    justifyContent: 'space-between',
-    paddingBottom: 20,
-  },
-  dialedNumberDisplay: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 60,
-    marginVertical: 10,
-  },
-  dialedNumberText: {
-    fontSize: 26,
-    fontWeight: '900',
-    color: COLORS.text,
-    letterSpacing: 2,
-  },
-  deleteBtn: {
-    position: 'absolute',
-    right: 10,
-    padding: 8,
-  },
-  deleteBtnText: {
-    fontSize: 24,
-    color: COLORS.neonRed,
-  },
-  keypadGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-around',
-  },
-  keypadBtn: {
-    width: (width - 80) / 3,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: COLORS.bgCardSolid,
-    borderWidth: 1,
-    borderColor: COLORS.glassBorder,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: 8,
-  },
-  keypadNumText: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: COLORS.text,
-  },
-  keypadSubText: {
-    fontSize: 8,
-    fontWeight: '800',
-    color: COLORS.neonCyan,
-    letterSpacing: 1,
-  },
-  dialpadActionRow: {
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  bigCallBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: width - 80,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: COLORS.neonGreen,
-    elevation: 10,
-  },
-  bigCallBtnIcon: {
-    fontSize: 20,
-    marginRight: 8,
-  },
-  bigCallBtnText: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: '#000000',
-    letterSpacing: 1,
-  },
-  // Modal Overlays
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(2, 5, 14, 0.85)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  simModalBox: {
-    width: width - 40,
-    backgroundColor: COLORS.bgCardSolid,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: COLORS.neonCyan,
-    padding: 20,
-  },
-  simModalTitle: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: COLORS.neonCyan,
-    letterSpacing: 1.5,
-  },
-  simModalSub: {
-    fontSize: 12,
-    color: COLORS.textSub,
-    marginBottom: 16,
-    marginTop: 4,
-  },
-  simOptionCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 240, 255, 0.1)',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.neonCyan,
-    padding: 14,
-    marginBottom: 10,
-  },
-  simBadgeCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: COLORS.neonGreen,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  simBadgeText: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#000000',
-  },
-  simNameText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: COLORS.text,
-  },
-  simCarrierText: {
-    fontSize: 11,
-    color: COLORS.textSub,
-  },
-  cancelSimBtn: {
-    alignItems: 'center',
-    paddingVertical: 12,
-    marginTop: 6,
-  },
-  cancelSimBtnText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: COLORS.neonRed,
-  },
-  // Full-Screen In-Call Overlay Modal
-  fullInCallContainer: {
-    flex: 1,
-    backgroundColor: COLORS.bg,
-  },
-  incomingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    padding: 30,
-  },
-  incomingTagBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(239, 68, 68, 0.18)',
-    borderWidth: 1,
-    borderColor: COLORS.neonRed,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  pulseDotRed: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: COLORS.neonRed,
-    marginRight: 8,
-  },
-  incomingTagText: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: COLORS.neonRed,
-    letterSpacing: 1,
-  },
-  glowingAvatarBox: {
-    width: 160,
-    height: 160,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarPulseWaveRing: {
-    position: 'absolute',
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    backgroundColor: 'rgba(0, 240, 255, 0.15)',
-    borderWidth: 1.5,
-    borderColor: COLORS.neonCyan,
-  },
-  avatarCircleBig: {
-    width: 110,
-    height: 110,
-    borderRadius: 55,
-    backgroundColor: COLORS.bgCardSolid,
-    borderWidth: 2,
-    borderColor: COLORS.neonCyan,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitialBig: {
-    fontSize: 40,
-    fontWeight: '900',
-    color: COLORS.text,
-  },
-  incomingCallerTitle: {
-    fontSize: 26,
-    fontWeight: '900',
-    color: COLORS.text,
-    textAlign: 'center',
-  },
-  incomingCallerSubTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.textSub,
-    marginTop: 4,
-  },
-  aiTagCard: {
-    backgroundColor: 'rgba(0, 240, 255, 0.15)',
-    borderWidth: 1,
-    borderColor: COLORS.neonCyan,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  aiTagCardText: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: COLORS.neonCyan,
-  },
-  incomingActionRowBtns: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    width: '100%',
-  },
-  circleCallActionBtn: {
-    alignItems: 'center',
-  },
-  circleIconBox: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 10,
-  },
-  actionBtnLabelText: {
-    fontSize: 12,
-    fontWeight: '900',
-    marginTop: 8,
-  },
-  // Active In-Call Styling
-  activeCallHeaderCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: COLORS.bgCardSolid,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.glassBorder,
-    padding: 16,
-    marginBottom: 16,
-  },
-  activeCallerTitle: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: COLORS.text,
-  },
-  activeCallerSubTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.neonCyan,
-    marginTop: 2,
-  },
-  hangupCircleSmallBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: COLORS.neonRed,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  inCallControlsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  controlPillBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.bgCardSolid,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    paddingVertical: 12,
-    marginHorizontal: 4,
-  },
-  controlPillActive: {
-    backgroundColor: 'rgba(0, 240, 255, 0.18)',
-    borderColor: COLORS.neonCyan,
-  },
-  controlPillIcon: {
-    fontSize: 16,
-    marginRight: 6,
-  },
-  controlPillLabel: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: COLORS.text,
-  },
-  chatFeedCardBox: {
-    flex: 1,
-    backgroundColor: COLORS.bgCardSolid,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.glassBorder,
-    padding: 16,
-    marginBottom: 14,
-  },
-  chatHeaderRowBox: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  chatTitleText: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: COLORS.neonCyan,
-    letterSpacing: 1,
-  },
-  talkingBadgeBox: {
-    backgroundColor: 'rgba(16, 185, 129, 0.2)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
-  },
-  talkingBadgeText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: COLORS.neonGreen,
-  },
-  chatFeedScroll: {
-    flex: 1,
-  },
-  msgBubble: {
-    padding: 12,
-    borderRadius: 14,
-    marginBottom: 10,
-    maxWidth: '85%',
-  },
-  msgJarvis: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(0, 240, 255, 0.12)',
-    borderWidth: 1,
-    borderColor: COLORS.neonCyan,
-  },
-  msgCaller: {
-    alignSelf: 'flex-end',
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  msgSenderLabel: {
-    fontSize: 10,
-    fontWeight: '900',
-    color: COLORS.neonCyan,
-    marginBottom: 4,
-  },
-  msgTextContent: {
-    fontSize: 13,
-    color: COLORS.text,
-    lineHeight: 18,
-  },
-  msgTimeLabel: {
-    fontSize: 9,
-    color: COLORS.textDim,
-    alignSelf: 'flex-end',
-    marginTop: 4,
-  },
-  speechSimulationInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  speechTextInputField: {
-    flex: 1,
-    height: 46,
-    backgroundColor: COLORS.bgCardSolid,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.glassBorder,
-    paddingHorizontal: 14,
-    color: COLORS.text,
-    fontSize: 13,
-  },
-  speechSendBtn: {
-    marginLeft: 10,
-    backgroundColor: COLORS.neonCyan,
-    paddingHorizontal: 16,
-    paddingVertical: 13,
-    borderRadius: 14,
-  },
-  speechSendBtnText: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: '#000000',
-  },
+// ═══════════════════════════════════════════════════════════════════════════════
+// STYLES
+// ═══════════════════════════════════════════════════════════════════════════════
+const s = StyleSheet.create({
+  container: { flex: 1, backgroundColor: C.bg },
+
+  // ── Header ──
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: (StatusBar.currentHeight || 0) + 12, paddingBottom: 12 },
+  headerTitle: { fontSize: 22, fontWeight: '700', color: C.textPri },
+  jarvisChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.surface, borderWidth: 1, borderColor: C.border, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
+  jarvisChipActive: { backgroundColor: 'rgba(0,200,83,0.12)', borderColor: C.green },
+  jarvisDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.textDim, marginRight: 6 },
+  jarvisDotActive: { backgroundColor: C.green },
+  jarvisChipText: { fontSize: 11, fontWeight: '800', color: C.textDim, letterSpacing: 0.5 },
+  jarvisChipTextActive: { color: C.green },
+
+  // ── Bottom Tab Bar ──
+  bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', backgroundColor: C.surface, borderTopWidth: 1, borderTopColor: C.border, paddingBottom: 8, paddingTop: 8 },
+  bottomTab: { flex: 1, alignItems: 'center' },
+  bottomTabText: { fontSize: 10, color: C.textDim, marginTop: 2, fontWeight: '600' },
+  bottomTabTextActive: { color: C.accent },
+
+  // ── FAB ──
+  fab: { position: 'absolute', right: 20, bottom: 74, width: 56, height: 56, borderRadius: 28, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center', elevation: 8, shadowColor: C.green, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8 },
+
+  // ── Lists ──
+  listContainer: { flex: 1, paddingHorizontal: 16 },
+  emptyText: { color: C.textDim, textAlign: 'center', marginTop: 60, fontSize: 14 },
+
+  // ── Call Log Item ──
+  callLogItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.border },
+  callLogAvatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.surfaceAlt, borderWidth: 1.5, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
+  callLogAvatarText: { color: C.textPri, fontSize: 17, fontWeight: '700' },
+  callLogInfo: { flex: 1, marginLeft: 14 },
+  callLogName: { color: C.textPri, fontSize: 15, fontWeight: '500' },
+  callLogIcon: { fontSize: 13, fontWeight: '900', marginRight: 4 },
+  callLogMeta: { color: C.textSec, fontSize: 12 },
+  callLogCallBtn: { padding: 10 },
+
+  // ── Contact Item ──
+  contactItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: C.border },
+  contactAvatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
+  contactAvatarText: { color: C.textPri, fontSize: 17, fontWeight: '700' },
+  contactInfo: { flex: 1, marginLeft: 14 },
+  contactName: { color: C.textPri, fontSize: 15, fontWeight: '500' },
+  contactNumber: { color: C.textSec, fontSize: 12, marginTop: 2 },
+  contactCallBtn: { padding: 10 },
+
+  // ── Search ──
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.surface, borderRadius: 12, borderWidth: 1, borderColor: C.border, paddingHorizontal: 14, marginBottom: 8 },
+  searchInput: { flex: 1, height: 44, color: C.textPri, fontSize: 14 },
+
+  // ── Settings ──
+  settingsSection: { marginBottom: 24 },
+  settingsSectionTitle: { fontSize: 11, fontWeight: '800', color: C.textDim, letterSpacing: 1.5, marginBottom: 10, marginTop: 16 },
+  settingsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: C.surface, borderRadius: 12, padding: 16, marginBottom: 8 },
+  settingsLabel: { color: C.textPri, fontSize: 15 },
+  settingsBadge: { color: C.accent, fontSize: 13, fontWeight: '600' },
+  settingsBadgeActive: { color: C.green },
+  toggleTrack: { width: 44, height: 24, borderRadius: 12, backgroundColor: C.border, justifyContent: 'center', paddingHorizontal: 2 },
+  toggleTrackActive: { backgroundColor: C.green },
+  toggleThumb: { width: 20, height: 20, borderRadius: 10, backgroundColor: C.textDim },
+  toggleThumbActive: { backgroundColor: C.white, alignSelf: 'flex-end' },
+  debugBox: { backgroundColor: '#05070d', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: C.border },
+  debugText: { color: C.green, fontSize: 10, fontFamily: 'monospace', lineHeight: 15 },
+
+  // ── Dialpad ──
+  dialpadScreen: { flex: 1, backgroundColor: C.bg },
+  dialpadHeader: { paddingHorizontal: 20, paddingTop: (StatusBar.currentHeight || 0) + 10, paddingBottom: 10 },
+  dialpadDisplay: { height: 80, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 30 },
+  dialpadNumber: { color: C.textPri, fontSize: 34, fontWeight: '300', letterSpacing: 2 },
+  keypadGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', paddingHorizontal: 30 },
+  keyBtn: { width: (width - 90) / 3, height: 70, justifyContent: 'center', alignItems: 'center', marginVertical: 2 },
+  keyNum: { color: C.textPri, fontSize: 28, fontWeight: '400' },
+  keySub: { color: C.textDim, fontSize: 9, letterSpacing: 2, marginTop: 1 },
+  dialpadActions: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 16 },
+  dialCallBtn: { width: 64, height: 64, borderRadius: 32, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center', marginHorizontal: 24 },
+
+  // ── Call Screens (shared) ──
+  callScreen: { flex: 1, backgroundColor: C.bg },
+  endCallBtn: { width: 68, height: 68, borderRadius: 34, backgroundColor: C.red, alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginTop: 20 },
+  endCallLabel: { color: C.textSec, fontSize: 12, textAlign: 'center', marginTop: 6, marginBottom: 30 },
+
+  // ── Incoming ──
+  incomingScreen: { flex: 1, alignItems: 'center', paddingTop: 60 },
+  incomingLabel: { color: C.textSec, fontSize: 16, letterSpacing: 0.5 },
+  incomingAvatarWrap: { width: 140, height: 140, alignItems: 'center', justifyContent: 'center', marginTop: 40, marginBottom: 20 },
+  incomingAvatarRing: { position: 'absolute', width: 130, height: 130, borderRadius: 65, borderWidth: 2, borderColor: C.green, opacity: 0.4 },
+  incomingAvatar: { width: 100, height: 100, borderRadius: 50, backgroundColor: C.surfaceAlt, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: C.border },
+  incomingAvatarText: { color: C.textPri, fontSize: 38, fontWeight: '300' },
+  incomingName: { color: C.textPri, fontSize: 28, fontWeight: '400' },
+  incomingNumber: { color: C.textSec, fontSize: 16, marginTop: 6 },
+  jarvisCountdownBadge: { backgroundColor: 'rgba(0,200,83,0.12)', borderWidth: 1, borderColor: C.green, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, marginTop: 20 },
+  jarvisCountdownText: { color: C.green, fontSize: 13, fontWeight: '600' },
+  incomingActions: { flexDirection: 'row', justifyContent: 'space-around', width: '100%', paddingHorizontal: 60 },
+  declineBtn: { width: 68, height: 68, borderRadius: 34, backgroundColor: C.red, alignItems: 'center', justifyContent: 'center' },
+  answerBtn: { width: 68, height: 68, borderRadius: 34, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center' },
+  incomingLabelsRow: { flexDirection: 'row', justifyContent: 'space-around', width: '100%', paddingHorizontal: 60, marginTop: 8, marginBottom: 40 },
+  incomingActionLabel: { color: C.textSec, fontSize: 13 },
+
+  // ── Outgoing ──
+  outgoingScreen: { flex: 1, alignItems: 'center', paddingTop: 60 },
+  outgoingLabel: { color: C.textSec, fontSize: 16, letterSpacing: 0.5 },
+  outgoingAvatar: { width: 100, height: 100, borderRadius: 50, backgroundColor: C.surfaceAlt, alignItems: 'center', justifyContent: 'center', marginTop: 40, marginBottom: 20, borderWidth: 2, borderColor: C.border },
+  outgoingAvatarText: { color: C.textPri, fontSize: 38, fontWeight: '300' },
+  outgoingName: { color: C.textPri, fontSize: 28, fontWeight: '400' },
+  outgoingNumber: { color: C.textSec, fontSize: 16, marginTop: 6 },
+  outgoingStatus: { color: C.accent, fontSize: 14, marginTop: 14, letterSpacing: 1 },
+  outgoingControls: { flexDirection: 'row', justifyContent: 'space-around', width: '60%', marginBottom: 20 },
+
+  // ── Active Call ──
+  activeScreen: { flex: 1, paddingTop: 50 },
+  activeHeader: { alignItems: 'center', marginBottom: 10 },
+  activeName: { color: C.textPri, fontSize: 24, fontWeight: '400' },
+  activeTimer: { color: C.green, fontSize: 18, marginTop: 6, fontFamily: 'monospace', letterSpacing: 2 },
+
+  // ── Control Grid ──
+  controlGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', paddingHorizontal: 20, marginBottom: 10 },
+  ctrlCircle: { width: (width - 80) / 3, alignItems: 'center', paddingVertical: 14 },
+  ctrlCircleActive: {},
+  ctrlIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: C.surfaceAlt, textAlign: 'center', textAlignVertical: 'center', fontSize: 22, lineHeight: 56, overflow: 'hidden' },
+  ctrlLabel: { color: C.textSec, fontSize: 11, marginTop: 6 },
+
+  // ── Chat Area ──
+  chatArea: { flex: 1, marginHorizontal: 16, backgroundColor: C.surface, borderRadius: 16, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: C.border },
+  chatHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  chatTitle: { color: C.accent, fontSize: 12, fontWeight: '800' },
+  chatSpeaking: { color: C.green, fontSize: 10, fontWeight: '700' },
+  chatScroll: { flex: 1 },
+  chatBubble: { padding: 10, borderRadius: 12, marginBottom: 8, maxWidth: '85%' },
+  chatBubbleAi: { alignSelf: 'flex-start', backgroundColor: 'rgba(41,121,255,0.12)', borderWidth: 1, borderColor: 'rgba(41,121,255,0.25)' },
+  chatBubbleUser: { alignSelf: 'flex-end', backgroundColor: C.surfaceAlt },
+  chatSender: { color: C.accent, fontSize: 10, fontWeight: '800', marginBottom: 3 },
+  chatText: { color: C.textPri, fontSize: 13, lineHeight: 18 },
+  chatTime: { color: C.textDim, fontSize: 9, alignSelf: 'flex-end', marginTop: 3 },
+  chatInputRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
+  chatInput: { flex: 1, height: 40, backgroundColor: C.surfaceAlt, borderRadius: 10, paddingHorizontal: 12, color: C.textPri, fontSize: 13, borderWidth: 1, borderColor: C.border },
+  chatSendBtn: { marginLeft: 8, backgroundColor: C.accent, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
+
+  // ── SIM Modal ──
+  simOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  simBox: { width: '85%', backgroundColor: C.surface, borderRadius: 20, padding: 24 },
+  simTitle: { color: C.textPri, fontSize: 18, fontWeight: '700', textAlign: 'center' },
+  simSubtitle: { color: C.textSec, fontSize: 13, textAlign: 'center', marginTop: 4, marginBottom: 16 },
+  simOption: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.surfaceAlt, borderRadius: 14, padding: 16, marginBottom: 10 },
+  simBadge: { width: 36, height: 36, borderRadius: 18, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center' },
+  simBadgeText: { color: '#000', fontSize: 16, fontWeight: '900' },
+  simName: { color: C.textPri, fontSize: 15, fontWeight: '600' },
+  simCarrier: { color: C.textSec, fontSize: 12 },
+  simCancel: { alignItems: 'center', paddingVertical: 14, marginTop: 4 },
 });
