@@ -12,6 +12,8 @@ import android.Manifest
 import android.app.role.RoleManager
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.speech.tts.TextToSpeech
+import android.media.AudioAttributes
 import androidx.core.content.ContextCompat
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -22,6 +24,33 @@ import java.util.Locale
 class CallmanagerModule : Module() {
 
   private var phoneStateListener: PhoneStateListener? = null
+  private var tts: TextToSpeech? = null
+  private var isTtsReady = false
+
+  private fun initNativeTts(context: Context) {
+    if (tts == null) {
+      try {
+        tts = TextToSpeech(context) { status ->
+          if (status == TextToSpeech.SUCCESS) {
+            isTtsReady = true
+            tts?.language = Locale("hi", "IN")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+              val audioAttributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build()
+              tts?.setAudioAttributes(audioAttributes)
+            }
+            logDebug(context, "SUCCESS: Native Telecom TextToSpeech Initialized!")
+          } else {
+            logDebug(context, "ERROR initializing Native TTS: status=$status")
+          }
+        }
+      } catch (e: Throwable) {
+        logDebug(context, "ERROR in initNativeTts: ${e.message}")
+      }
+    }
+  }
 
   private fun logDebug(context: Context, message: String) {
     try {
@@ -233,6 +262,36 @@ class CallmanagerModule : Module() {
       }
     }
 
+    AsyncFunction("speakCallAudio") { text: String ->
+      val context = appContext.reactContext ?: return@AsyncFunction false
+      logDebug(context, "Attempting native speakCallAudio: $text")
+      try {
+        initNativeTts(context)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+          tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "AiCallSpeech_${System.currentTimeMillis()}")
+        } else {
+          @Suppress("DEPRECATION")
+          tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null)
+        }
+        logDebug(context, "SUCCESS: Spoke call audio natively via USAGE_VOICE_COMMUNICATION")
+        return@AsyncFunction true
+      } catch (e: Throwable) {
+        logDebug(context, "ERROR in speakCallAudio: ${e.message}")
+        return@AsyncFunction false
+      }
+    }
+
+    AsyncFunction("stopCallAudio") {
+      val context = appContext.reactContext ?: return@AsyncFunction false
+      try {
+        tts?.stop()
+        logDebug(context, "SUCCESS: Stopped native TTS call audio")
+        return@AsyncFunction true
+      } catch (e: Throwable) {
+        return@AsyncFunction false
+      }
+    }
+
     AsyncFunction("getSimCardsInfo") {
       val context = appContext.reactContext ?: return@AsyncFunction emptyList<Map<String, Any>>()
       val simList = mutableListOf<Map<String, Any>>()
@@ -283,8 +342,16 @@ class CallmanagerModule : Module() {
       logDebug(context, "Setting Speakerphone = $enable")
       try {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioManager.mode = AudioManager.MODE_IN_CALL
         audioManager.isSpeakerphoneOn = enable
-        logDebug(context, "SUCCESS: Speakerphone set to $enable")
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+          AiInCallService.activeCall?.setAudioRoute(
+            if (enable) android.telecom.CallAudioState.ROUTE_SPEAKER
+            else android.telecom.CallAudioState.ROUTE_EARPIECE
+          )
+        }
+        logDebug(context, "SUCCESS: Speakerphone set to $enable with MODE_IN_CALL")
         return@AsyncFunction true
       } catch (e: Throwable) {
         logDebug(context, "ERROR setting speakerphone: ${e.javaClass.simpleName} - ${e.message}")
@@ -433,8 +500,8 @@ class CallmanagerModule : Module() {
 
           val seenNumbers = mutableSetOf<String>()
           var count = 0
-          while (c.moveToNext() && count < 100) {
-            val name = if (nameIdx >= 0) c.getString(nameIdx) ?: "Unknown" else "Unknown"
+          while (c.moveToNext() && count < 5000) {
+            val name = if (nameIdx >= 0) c.getString(nameIdx) ?: "" else ""
             val number = if (numberIdx >= 0) c.getString(numberIdx) ?: "" else ""
 
             val cleanNum = number.replace("\\s+".toRegex(), "")
@@ -442,7 +509,7 @@ class CallmanagerModule : Module() {
               seenNumbers.add(cleanNum)
               contacts.add(mapOf(
                 "id" to (count + 1).toString(),
-                "name" to name,
+                "name" to if (name.isNotEmpty()) name else number,
                 "number" to number,
                 "category" to "Contact"
               ))
@@ -450,7 +517,7 @@ class CallmanagerModule : Module() {
             }
           }
         }
-        logDebug(context, "SUCCESS: Fetched ${contacts.size} real contacts")
+        logDebug(context, "SUCCESS: Fetched ${contacts.size} real contacts from phonebook")
       } catch (e: Throwable) {
         logDebug(context, "ERROR fetching contacts: ${e.message}")
       }

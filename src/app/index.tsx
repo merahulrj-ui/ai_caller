@@ -35,7 +35,8 @@ import {
 import {
   generateAiCallReply,
   speakAiVoiceResponse,
-  stopAiVoiceResponse
+  stopAiVoiceResponse,
+  setGeminiApiKey
 } from '../services/GeminiAiService';
 
 const { width, height } = Dimensions.get('window');
@@ -126,6 +127,7 @@ export default function HomeScreen() {
   const [showSimModal, setShowSimModal] = useState(false);
   const [pendingCallTarget, setPendingCallTarget] = useState('');
   const [selectedSim, setSelectedSim] = useState('SIM 1');
+  const [apiKeyInput, setApiKeyInput] = useState('');
 
   // Real Contacts & Real Call History Logs & Real SIM States
   const [contactsList, setContactsList] = useState(MOCK_CONTACTS);
@@ -266,34 +268,52 @@ export default function HomeScreen() {
     });
   };
 
+  // 15-Second Auto-Answer Timer Ref
+  const autoAnswerTimerRef = useRef(null);
+
   // Subscribe to Call Events
   useEffect(() => {
     const unsubscribe = subscribeToCalls(
       (number) => {
         setCallStatus('ringing');
         setCallerId(number || 'Incoming Call');
+
+        if (autoAnswerTimerRef.current) {
+          clearTimeout(autoAnswerTimerRef.current);
+        }
+
         if (aiActive) {
-          setTimeout(() => {
-            answerCall();
-            enableSpeakerphone(true);
+          // Ring for 15 seconds. If user doesn't pick up/decline, AI auto-answers after 15 seconds!
+          autoAnswerTimerRef.current = setTimeout(async () => {
+            await answerCall();
+            await enableSpeakerphone(true);
             setIsSpeakerOn(true);
-          }, 1000);
+            setCallStatus('active');
+            await startAiCallGreeting();
+          }, 15000);
         }
       },
-      () => {
+      async () => {
+        if (autoAnswerTimerRef.current) clearTimeout(autoAnswerTimerRef.current);
         setCallStatus('active');
-        startAiCallGreeting();
+        await enableSpeakerphone(true);
+        setIsSpeakerOn(true);
+        await startAiCallGreeting();
       },
-      () => {
+      async () => {
+        if (autoAnswerTimerRef.current) clearTimeout(autoAnswerTimerRef.current);
         setCallStatus('idle');
         setCallerId('');
         setCallDuration(0);
         setIsMuted(false);
         setIsSpeakerOn(false);
-        stopAiVoiceResponse();
+        await stopAiVoiceResponse();
       }
     );
-    return () => unsubscribe();
+    return () => {
+      if (autoAnswerTimerRef.current) clearTimeout(autoAnswerTimerRef.current);
+      unsubscribe();
+    };
   }, [aiActive]);
 
   const checkDefaultStatus = async () => {
@@ -332,6 +352,7 @@ export default function HomeScreen() {
   };
 
   const handleHangup = async () => {
+    if (autoAnswerTimerRef.current) clearTimeout(autoAnswerTimerRef.current);
     await stopAiVoiceResponse();
     await endCall();
     setCallStatus('idle');
@@ -433,6 +454,21 @@ export default function HomeScreen() {
                 </TouchableOpacity>
               </View>
 
+              {/* Gemini AI Key Card */}
+              <View style={[styles.glassCard, { marginTop: 12 }]}>
+                <Text style={styles.cardTitle}>GEMINI AI BRAIN CONFIGURATION</Text>
+                <TextInput
+                  style={[styles.searchInput, { marginBottom: 0 }]}
+                  placeholder="Paste Gemini API Key (Optional)..."
+                  placeholderTextColor={COLORS.textDim}
+                  value={apiKeyInput}
+                  onChangeText={(val) => {
+                    setApiKeyInput(val);
+                    setGeminiApiKey(val);
+                  }}
+                />
+              </View>
+
               {/* Debugger Panel */}
               <View style={[styles.glassCard, { marginTop: 14, marginBottom: 20 }]}>
                 <View style={styles.cardHeaderRow}>
@@ -507,20 +543,27 @@ export default function HomeScreen() {
                 maxToRenderPerBatch={10}
                 windowSize={5}
                 removeClippedSubviews={true}
-                renderItem={({ item: contact }) => (
-                  <View style={styles.contactCard}>
-                    <View style={styles.avatarCircle}>
-                      <Text style={styles.avatarText}>{contact.name ? contact.name[0] : '#'}</Text>
+                renderItem={({ item: contact }) => {
+                  const hasName = contact.name && contact.name !== contact.number;
+                  const displayName = hasName ? contact.name : contact.number;
+                  const displayNum = hasName ? contact.number : '';
+                  const initialChar = hasName ? contact.name[0].toUpperCase() : '👤';
+
+                  return (
+                    <View style={styles.contactCard}>
+                      <View style={styles.avatarCircle}>
+                        <Text style={styles.avatarText}>{initialChar}</Text>
+                      </View>
+                      <View style={{ flex: 1, marginLeft: 12 }}>
+                        <Text style={styles.contactName}>{displayName}</Text>
+                        {displayNum ? <Text style={styles.contactNumber}>{displayNum}</Text> : null}
+                      </View>
+                      <TouchableOpacity style={styles.contactDialBtn} onPress={() => triggerCallSimSelection(contact.number)}>
+                        <Text style={{ color: COLORS.neonCyan, fontSize: 16 }}>📞</Text>
+                      </TouchableOpacity>
                     </View>
-                    <View style={{ flex: 1, marginLeft: 12 }}>
-                      <Text style={styles.contactName}>{contact.name}</Text>
-                      <Text style={styles.contactNumber}>{contact.number}</Text>
-                    </View>
-                    <TouchableOpacity style={styles.contactDialBtn} onPress={() => triggerCallSimSelection(contact.number)}>
-                      <Text style={{ color: COLORS.neonCyan, fontSize: 16 }}>📞</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
+                  );
+                }}
               />
             </View>
           )}
@@ -655,6 +698,7 @@ export default function HomeScreen() {
               <TouchableOpacity
                 style={styles.hangupButtonContainer}
                 onPress={async () => {
+                  if (autoAnswerTimerRef.current) clearTimeout(autoAnswerTimerRef.current);
                   await answerCall();
                   await enableSpeakerphone(true);
                   setIsSpeakerOn(true);
@@ -775,25 +819,30 @@ const styles = StyleSheet.create({
   mainContent: {
     flex: 1,
     paddingHorizontal: 20,
-    paddingTop: 10,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ? StatusBar.currentHeight + 10 : 25) : 10,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 10,
+    marginTop: 18,
+    marginBottom: 16,
   },
   title: {
-    fontSize: 28,
+    fontSize: 30,
     fontWeight: '900',
     color: COLORS.text,
-    letterSpacing: 4,
+    letterSpacing: 6,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    textShadowColor: 'rgba(0, 240, 255, 0.4)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
   },
   subtitle: {
     fontSize: 11,
     color: COLORS.neonCyan,
-    letterSpacing: 2,
-    marginTop: 2,
+    letterSpacing: 3,
+    marginTop: 4,
     textTransform: 'uppercase',
+    fontWeight: '600',
   },
   tabContentContainer: {
     flex: 1,

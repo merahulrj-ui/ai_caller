@@ -22,14 +22,19 @@
       "intentFilters": [
         {
           "action": "DIAL",
-          "category": ["DEFAULT"],
+          "category": [
+            "DEFAULT"
+          ],
           "data": {
             "scheme": "tel"
           }
         },
         {
           "action": "VIEW",
-          "category": ["DEFAULT", "BROWSABLE"],
+          "category": [
+            "DEFAULT",
+            "BROWSABLE"
+          ],
           "data": {
             "scheme": "tel"
           }
@@ -44,7 +49,9 @@
         "READ_CONTACTS",
         "ANSWER_PHONE_CALLS",
         "READ_PHONE_NUMBERS",
-        "MODIFY_AUDIO_SETTINGS"
+        "MODIFY_AUDIO_SETTINGS",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_MEDIA_PLAYBACK"
       ]
     },
     "web": {
@@ -64,6 +71,12 @@
       "eas": {
         "projectId": "d1bbe27c-b1d9-483f-b5aa-b6a686463464"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/d1bbe27c-b1d9-483f-b5aa-b6a686463464"
     }
   }
 }

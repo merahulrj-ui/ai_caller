@@ -50,26 +50,26 @@ export const generateAiCallReply = async (callerText, conversationHistory = []) 
   }
 };
 
+import { speakCallAudio, stopCallAudio } from './CallManager';
+
 /**
- * Speak AI Response using Text-to-Speech (TTS)
+ * Speak AI Response using Native Telecom Audio Stream TTS
  */
 export const speakAiVoiceResponse = async (text, onDoneCallback) => {
   try {
-    // Stop any ongoing speech
-    await Speech.stop();
-
-    Speech.speak(text, {
-      language: 'hi-IN', // Indian accent / Hindi support
-      pitch: 1.0,
-      rate: 0.95,
-      onDone: () => {
-        if (onDoneCallback) onDoneCallback();
-      },
-      onError: (err) => {
-        console.warn('Speech TTS Error:', err);
-        if (onDoneCallback) onDoneCallback();
-      },
-    });
+    const spokenNatively = await speakCallAudio(text);
+    if (!spokenNatively) {
+      await Speech.stop();
+      Speech.speak(text, {
+        language: 'hi-IN',
+        pitch: 1.0,
+        rate: 0.95,
+        onDone: () => { if (onDoneCallback) onDoneCallback(); },
+        onError: () => { if (onDoneCallback) onDoneCallback(); },
+      });
+    } else {
+      if (onDoneCallback) setTimeout(onDoneCallback, 4000);
+    }
   } catch (e) {
     console.error('TTS Error:', e);
     if (onDoneCallback) onDoneCallback();
@@ -81,22 +81,32 @@ export const speakAiVoiceResponse = async (text, onDoneCallback) => {
  */
 export const stopAiVoiceResponse = async () => {
   try {
+    await stopCallAudio();
     await Speech.stop();
   } catch (e) {}
 };
 
 /**
- * Fallback AI Responses when API key is pending
+ * Built-in Smart Offline AI Responses (0% API Key Needed - Works 100% Free Out of the Box!)
  */
 function getSmartFallbackReply(callerText) {
+  if (!callerText) {
+    return 'Namaste! Main Rahul ka J.A.R.V.I.S AI Assistant bol raha hu. Rahul ji abhi busy hain, bataiye main kya sahayata kar sakta hu?';
+  }
+
   const lower = callerText.toLowerCase();
-  if (lower.includes('hello') || lower.includes('hi') || lower.includes('namaste')) {
-    return 'Namaste! Main Rahul ka J.A.R.V.I.S AI Assistant bol raha hu. Rahul ji abhi busy hain, bataiye kya kaam tha?';
-  } else if (lower.includes('kahan') || lower.includes('where')) {
-    return 'Rahul ji abhi meeting mein hain. Aapka koi zaroori message hai toh mujhe bata dijiye, main unhe forward kar dunga.';
-  } else if (lower.includes('free') || lower.includes('kab')) {
-    return 'Ji, Rahul ji shaam tak free ho jayenge. Main unse bol dunga ki aapko call back kar lein.';
+
+  if (lower.includes('hello') || lower.includes('hi') || lower.includes('namaste') || lower.includes('suno') || lower.includes('haan')) {
+    return 'Namaste! Main Rahul ka J.A.R.V.I.S AI Assistant bol raha hu. Rahul ji abhi busy hain, bataiye main kya sahayata kar sakta hu?';
+  } else if (lower.includes('kahan') || lower.includes('kidhar') || lower.includes('busy') || lower.includes('where')) {
+    return 'Rahul ji abhi zaroori meeting mein hain. Main unhe inform kar dunga ki aapka call aaya tha, koi message hai?';
+  } else if (lower.includes('free') || lower.includes('kab') || lower.includes('wapas') || lower.includes('time')) {
+    return 'Ji, Rahul ji shaam tak free ho jayenge. Main unse keh dunga ki free hokar aapko call back kar lein.';
+  } else if (lower.includes('urgent') || lower.includes('zaroori') || lower.includes('emergency') || lower.includes('jaldi')) {
+    return 'Ji main samajh gaya. Main abhi urgent notification alert Rahul ji ko bhej raha hu. Dhanyawad!';
+  } else if (lower.includes('kaun') || lower.includes('who') || lower.includes('tum')) {
+    return 'Main Rahul ka autonomous AI Call Assistant J.A.R.V.I.S hu. Main unki incoming calls receive karta hu.';
   } else {
-    return 'Ji main samajh gaya. Main aapka ye message Rahul ji ko inform kar deta hu. Dhanyawad!';
+    return 'Ji main samajh gaya. Main aapka ye message Rahul ji ko inform kar dunga. Dhanyawad!';
   }
 }

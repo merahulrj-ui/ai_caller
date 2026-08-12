@@ -197,5 +197,24 @@ export const getSimCardsInfo = async () => {
   }
 };
 
+export const speakCallAudio = async (text) => {
+  if (!CallmanagerModule || !CallmanagerModule.speakCallAudio) return false;
+  try {
+    return await CallmanagerModule.speakCallAudio(text);
+  } catch (e) {
+    console.error('Failed to speak call audio natively:', e);
+    return false;
+  }
+};
+
+export const stopCallAudio = async () => {
+  if (!CallmanagerModule || !CallmanagerModule.stopCallAudio) return false;
+  try {
+    return await CallmanagerModule.stopCallAudio();
+  } catch (e) {
+    return false;
+  }
+};
+
 
 
