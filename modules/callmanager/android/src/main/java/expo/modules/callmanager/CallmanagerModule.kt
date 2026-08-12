@@ -12,6 +12,8 @@ import android.Manifest
 import android.app.role.RoleManager
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.speech.tts.TextToSpeech
+import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.media.Ringtone
 import androidx.core.content.ContextCompat
