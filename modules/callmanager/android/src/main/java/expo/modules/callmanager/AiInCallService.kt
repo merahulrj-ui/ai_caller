@@ -4,6 +4,7 @@ import android.telecom.Call
 import android.telecom.InCallService
 import android.telecom.VideoProfile
 import android.content.Context
+import android.content.Intent
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -28,6 +29,20 @@ class AiInCallService : InCallService() {
     }
   }
 
+  private fun bringAppToForeground() {
+    try {
+      val mainIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+      }
+      if (mainIntent != null) {
+        startActivity(mainIntent)
+        logDebug(this, "SUCCESS: Brought MainActivity to foreground for Call UI!")
+      }
+    } catch (e: Throwable) {
+        logDebug(this, "ERROR bringing App UI to foreground: ${e.message}")
+    }
+  }
+
   override fun onCallAdded(call: Call) {
     super.onCallAdded(call)
     logDebug(this, "onCallAdded: State = ${call.state}")
@@ -41,6 +56,7 @@ class AiInCallService : InCallService() {
           try {
             c.answer(VideoProfile.STATE_AUDIO_ONLY)
             logDebug(this@AiInCallService, "SUCCESS: Answered via Callback!")
+            bringAppToForeground()
           } catch (e: Throwable) {
             logDebug(this@AiInCallService, "ERROR in Callback answer: ${e.message}")
           }
@@ -56,6 +72,7 @@ class AiInCallService : InCallService() {
         try {
           call.answer(VideoProfile.STATE_AUDIO_ONLY)
           logDebug(this, "SUCCESS: Call.answer(STATE_AUDIO_ONLY) executed!")
+          bringAppToForeground()
         } catch (e: Throwable) {
           logDebug(this, "ERROR answering call in InCallService: ${e.javaClass.simpleName} - ${e.message}")
         }
