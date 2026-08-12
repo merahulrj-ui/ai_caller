@@ -30,10 +30,10 @@ jobs:
         run: npm install --legacy-peer-deps
 
       - name: Prebuild Android Project
-        run: npx expo prebuild --platform android --clean
+        run: npx expo prebuild --platform android
 
       - name: Build APK
-        run: cd android && ./gradlew assembleRelease --info
+        run: cd android && ./gradlew assembleRelease --build-cache --configure-on-demand
         env:
           NODE_OPTIONS: --max_old_space_size=4096
 
