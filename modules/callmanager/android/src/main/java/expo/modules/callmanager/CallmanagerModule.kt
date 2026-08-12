@@ -283,6 +283,120 @@ class CallmanagerModule : Module() {
       return@AsyncFunction false
     }
 
+    AsyncFunction("getRealCallLogs") {
+      val context = appContext.reactContext ?: return@AsyncFunction emptyList<Map<String, Any>>()
+      val logs = mutableListOf<Map<String, Any>>()
+      if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED) {
+        logDebug(context, "Permission READ_CALL_LOG not granted")
+        return@AsyncFunction logs
+      }
+
+      try {
+        val cursor = context.contentResolver.query(
+          android.provider.CallLog.Calls.CONTENT_URI,
+          arrayOf(
+            android.provider.CallLog.Calls._ID,
+            android.provider.CallLog.Calls.NUMBER,
+            android.provider.CallLog.Calls.CACHED_NAME,
+            android.provider.CallLog.Calls.TYPE,
+            android.provider.CallLog.Calls.DATE,
+            android.provider.CallLog.Calls.DURATION
+          ),
+          null, null, "${android.provider.CallLog.Calls.DATE} DESC"
+        )
+
+        cursor?.use { c ->
+          val numberIdx = c.getColumnIndex(android.provider.CallLog.Calls.NUMBER)
+          val nameIdx = c.getColumnIndex(android.provider.CallLog.Calls.CACHED_NAME)
+          val typeIdx = c.getColumnIndex(android.provider.CallLog.Calls.TYPE)
+          val dateIdx = c.getColumnIndex(android.provider.CallLog.Calls.DATE)
+          val durationIdx = c.getColumnIndex(android.provider.CallLog.Calls.DURATION)
+
+          var count = 0
+          while (c.moveToNext() && count < 50) {
+            val num = if (numberIdx >= 0) c.getString(numberIdx) ?: "" else ""
+            val name = if (nameIdx >= 0) c.getString(nameIdx) ?: num else num
+            val typeInt = if (typeIdx >= 0) c.getInt(typeIdx) else 1
+            val dateLong = if (dateIdx >= 0) c.getLong(dateIdx) else 0L
+            val durSec = if (durationIdx >= 0) c.getLong(durationIdx) else 0L
+
+            val typeStr = when (typeInt) {
+              android.provider.CallLog.Calls.INCOMING_TYPE -> "incoming"
+              android.provider.CallLog.Calls.OUTGOING_TYPE -> "outgoing"
+              android.provider.CallLog.Calls.MISSED_TYPE -> "missed"
+              else -> "incoming"
+            }
+
+            val timeStr = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date(dateLong))
+            val durStr = "${durSec / 60}m ${durSec % 60}s"
+
+            logs.add(mapOf(
+              "id" to (count + 1).toString(),
+              "name" to if (!name.isNullOrEmpty()) name else (if (num.isNotEmpty()) num else "Unknown"),
+              "number" to num,
+              "type" to typeStr,
+              "time" to timeStr,
+              "duration" to durStr
+            ))
+            count++
+          }
+        }
+        logDebug(context, "SUCCESS: Fetched ${logs.size} real call logs")
+      } catch (e: Throwable) {
+        logDebug(context, "ERROR fetching call logs: ${e.message}")
+      }
+      return@AsyncFunction logs
+    }
+
+    AsyncFunction("getRealContacts") {
+      val context = appContext.reactContext ?: return@AsyncFunction emptyList<Map<String, Any>>()
+      val contacts = mutableListOf<Map<String, Any>>()
+      if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
+        logDebug(context, "Permission READ_CONTACTS not granted")
+        return@AsyncFunction contacts
+      }
+
+      try {
+        val cursor = context.contentResolver.query(
+          android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+          arrayOf(
+            android.provider.ContactsContract.CommonDataKinds.Phone._ID,
+            android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+            android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER
+          ),
+          null, null, "${android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} ASC"
+        )
+
+        cursor?.use { c ->
+          val nameIdx = c.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+          val numberIdx = c.getColumnIndex(android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER)
+
+          val seenNumbers = mutableSetOf<String>()
+          var count = 0
+          while (c.moveToNext() && count < 100) {
+            val name = if (nameIdx >= 0) c.getString(nameIdx) ?: "Unknown" else "Unknown"
+            val number = if (numberIdx >= 0) c.getString(numberIdx) ?: "" else ""
+
+            val cleanNum = number.replace("\\s+".toRegex(), "")
+            if (cleanNum.isNotEmpty() && !seenNumbers.contains(cleanNum)) {
+              seenNumbers.add(cleanNum)
+              contacts.add(mapOf(
+                "id" to (count + 1).toString(),
+                "name" to name,
+                "number" to number,
+                "category" to "Contact"
+              ))
+              count++
+            }
+          }
+        }
+        logDebug(context, "SUCCESS: Fetched ${contacts.size} real contacts")
+      } catch (e: Throwable) {
+        logDebug(context, "ERROR fetching contacts: ${e.message}")
+      }
+      return@AsyncFunction contacts
+    }
+
     AsyncFunction("stopListening") {
       val context = appContext.reactContext ?: return@AsyncFunction false
       logDebug(context, "stopListening() called")

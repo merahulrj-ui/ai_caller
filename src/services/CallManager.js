@@ -167,5 +167,25 @@ export const muteMicrophone = async (muted) => {
   }
 };
 
+export const getRealCallLogs = async () => {
+  if (!CallmanagerModule || !CallmanagerModule.getRealCallLogs) return [];
+  try {
+    return await CallmanagerModule.getRealCallLogs();
+  } catch (e) {
+    console.error('Failed to fetch real call logs:', e);
+    return [];
+  }
+};
+
+export const getRealContacts = async () => {
+  if (!CallmanagerModule || !CallmanagerModule.getRealContacts) return [];
+  try {
+    return await CallmanagerModule.getRealContacts();
+  } catch (e) {
+    console.error('Failed to fetch real contacts:', e);
+    return [];
+  }
+};
+
 
 
