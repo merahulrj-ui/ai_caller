@@ -61,9 +61,9 @@ export const speakAiVoiceResponse = async (text, onDoneCallback) => {
     if (!spokenNatively) {
       await Speech.stop();
       Speech.speak(text, {
-        language: 'hi-IN',
+        language: 'en-US',
         pitch: 1.0,
-        rate: 0.95,
+        rate: 0.9,
         onDone: () => { if (onDoneCallback) onDoneCallback(); },
         onError: () => { if (onDoneCallback) onDoneCallback(); },
       });

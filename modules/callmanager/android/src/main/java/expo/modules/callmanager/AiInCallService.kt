@@ -9,6 +9,13 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.os.Build
+import androidx.core.app.NotificationCompat
+
 class AiInCallService : InCallService() {
 
   companion object {
@@ -49,7 +56,64 @@ class AiInCallService : InCallService() {
   override fun onDestroy() {
     super.onDestroy()
     cancelAutoAnswerTimer()
+    cancelCallNotification()
     if (instance == this) instance = null
+  }
+
+  private fun showFullScreenCallNotification(callerNumber: String) {
+    try {
+      val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+      val channelId = "ai_caller_full_screen_channel"
+
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val channel = NotificationChannel(
+          channelId,
+          "Incoming Call Banner",
+          NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+          description = "Full screen notification for incoming calls"
+          setBypassDnd(true)
+          lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+        }
+        notificationManager.createNotificationChannel(channel)
+      }
+
+      val fullScreenIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+        action = Intent.ACTION_MAIN
+        addCategory(Intent.CATEGORY_LAUNCHER)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+      }
+
+      val fullScreenPendingIntent = PendingIntent.getActivity(
+        this,
+        0,
+        fullScreenIntent,
+        PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
+      )
+
+      val notificationBuilder = NotificationCompat.Builder(this, channelId)
+        .setSmallIcon(android.R.drawable.ic_menu_call)
+        .setContentTitle("INCOMING TELECOM CALL")
+        .setContentText(callerNumber)
+        .setPriority(NotificationCompat.PRIORITY_MAX)
+        .setCategory(NotificationCompat.CATEGORY_CALL)
+        .setFullScreenIntent(fullScreenPendingIntent, true)
+        .setAutoCancel(true)
+        .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+
+      startForeground(1001, notificationBuilder.build())
+      logDebug(this, "SUCCESS: Posted FullScreenIntent Notification for Lockscreen Banner!")
+    } catch (e: Throwable) {
+      logDebug(this, "ERROR posting FullScreenIntent: ${e.message}")
+    }
+  }
+
+  private fun cancelCallNotification() {
+    try {
+      stopForeground(true)
+      val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+      notificationManager.cancel(1001)
+    } catch (e: Throwable) {}
   }
 
   private fun bringAppToForeground() {
@@ -72,6 +136,24 @@ class AiInCallService : InCallService() {
     }
   }
 
+  fun enableNativeSpeakerphone(enable: Boolean) {
+    try {
+      val audioManager = getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+      audioManager.mode = android.media.AudioManager.MODE_IN_CALL
+      audioManager.isSpeakerphoneOn = enable
+
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        setAudioRoute(
+          if (enable) android.telecom.CallAudioState.ROUTE_SPEAKER
+          else android.telecom.CallAudioState.ROUTE_EARPIECE
+        )
+      }
+      logDebug(this, "SUCCESS: Native Speakerphone set to $enable")
+    } catch (e: Throwable) {
+      logDebug(this, "ERROR setting native speakerphone: ${e.message}")
+    }
+  }
+
   override fun onCallAdded(call: Call) {
     try {
       super.onCallAdded(call)
@@ -84,7 +166,18 @@ class AiInCallService : InCallService() {
             super.onStateChanged(c, state)
             logDebug(this@AiInCallService, "Call Callback onStateChanged: $state")
             if (state == Call.STATE_RINGING) {
+              val number = c.details?.handle?.schemeSpecificPart ?: "Incoming Call"
+              showFullScreenCallNotification(number)
               bringAppToForeground()
+            } else if (state == Call.STATE_ACTIVE) {
+              cancelCallNotification()
+              enableNativeSpeakerphone(true)
+              CallmanagerModule.vibrateCallConnected(this@AiInCallService)
+              CallmanagerModule.emitNativeEvent("onCallAnswered", mapOf("success" to true))
+            } else if (state == Call.STATE_DISCONNECTED) {
+              cancelCallNotification()
+              enableNativeSpeakerphone(false)
+              CallmanagerModule.emitNativeEvent("onCallEnded", mapOf("success" to true))
             }
           } catch (e: Throwable) {
             logDebug(this@AiInCallService, "Callback onStateChanged error: ${e.message}")
@@ -94,8 +187,10 @@ class AiInCallService : InCallService() {
       call.registerCallback(callback)
 
       if (call.state == Call.STATE_RINGING) {
-        logDebug(this, "RINGING call detected in InCallService! Starting ringtone, UI foregrounding, and scheduling 10s Native Auto-Answer...")
+        val callerNum = call.details?.handle?.schemeSpecificPart ?: "Incoming Call"
+        logDebug(this, "RINGING call detected in InCallService! Starting ringtone, FullScreenIntent, and 10s Native Auto-Answer...")
         CallmanagerModule.startRingtone(this)
+        showFullScreenCallNotification(callerNum)
         bringAppToForeground()
 
         if (isAiEnabled) {
@@ -112,6 +207,8 @@ class AiInCallService : InCallService() {
                   activeCall?.answer(android.telecom.VideoProfile.STATE_AUDIO_ONLY)
                 }
                 logDebug(this@AiInCallService, "SUCCESS: 10s Native Auto-Answer Executed!")
+                enableNativeSpeakerphone(true)
+                CallmanagerModule.emitNativeEvent("onCallAnswered", mapOf("success" to true))
               }
             } catch (e: Throwable) {
               logDebug(this@AiInCallService, "ERROR in 10s Native Auto-Answer: ${e.message}")

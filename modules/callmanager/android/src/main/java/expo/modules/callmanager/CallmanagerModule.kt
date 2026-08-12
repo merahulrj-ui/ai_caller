@@ -30,7 +30,16 @@ class CallmanagerModule : Module() {
   private var isTtsReady = false
 
   companion object {
+    var instance: CallmanagerModule? = null
     var ringtone: Ringtone? = null
+
+    fun emitNativeEvent(eventName: String, body: Map<String, Any?>) {
+      try {
+        instance?.sendEvent(eventName, body)
+      } catch (e: Throwable) {
+        e.printStackTrace()
+      }
+    }
 
     fun startRingtone(context: Context) {
       try {
@@ -56,6 +65,22 @@ class CallmanagerModule : Module() {
       } catch (e: Throwable) {}
     }
 
+    fun vibrateCallConnected(context: Context) {
+      try {
+        val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+        if (vibrator != null && vibrator.hasVibrator()) {
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(android.os.VibrationEffect.createOneShot(120, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+          } else {
+            vibrator.vibrate(120)
+          }
+          logDebug(context, "SUCCESS: Triggered 120ms Call Connected Haptic Vibration!")
+        }
+      } catch (e: Throwable) {
+        logDebug(context, "ERROR in vibrateCallConnected: ${e.message}")
+      }
+    }
+
     fun logDebug(context: Context, message: String) {
       try {
         val prefs = context.getSharedPreferences("callmanager_debug", Context.MODE_PRIVATE)
@@ -76,7 +101,9 @@ class CallmanagerModule : Module() {
         tts = TextToSpeech(context) { status ->
           if (status == TextToSpeech.SUCCESS) {
             isTtsReady = true
-            tts?.language = Locale("hi", "IN")
+            tts?.language = Locale.US
+            tts?.setSpeechRate(0.92f)
+            tts?.setPitch(1.0f)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
               val audioAttributes = AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
@@ -110,6 +137,10 @@ class CallmanagerModule : Module() {
 
   override fun definition() = ModuleDefinition {
     Name("Callmanager")
+
+    OnCreate {
+      instance = this@CallmanagerModule
+    }
 
     Events("onIncomingCall", "onCallAnswered", "onCallEnded", "onDebugLog")
 
@@ -207,6 +238,7 @@ class CallmanagerModule : Module() {
           } else {
             call.answer(VideoProfile.STATE_AUDIO_ONLY)
           }
+          vibrateCallConnected(context)
           logDebug(context, "SUCCESS: Answered via AiInCallService activeCall!")
           sendEvent("onCallAnswered", mapOf("success" to true))
           return@AsyncFunction true
