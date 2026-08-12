@@ -30,6 +30,11 @@ import {
   getRealCallLogs,
   getRealContacts
 } from '../services/CallManager';
+import {
+  generateAiCallReply,
+  speakAiVoiceResponse,
+  stopAiVoiceResponse
+} from '../services/GeminiAiService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -218,6 +223,39 @@ export default function HomeScreen() {
     return () => clearInterval(interval);
   }, [callStatus]);
 
+  // Phase 2: Live AI Speech & Voice Conversation States
+  const [conversation, setConversation] = useState([]);
+  const [speechInput, setSpeechInput] = useState('');
+  const [isAiTalking, setIsAiTalking] = useState(false);
+
+  const startAiCallGreeting = async () => {
+    if (!aiActive) return;
+    const initialGreeting = "Namaste! Main Rahul ka J.A.R.V.I.S AI Assistant bol raha hu. Rahul ji abhi busy hain, bataiye main kya sahayata kar sakta hu?";
+    setConversation([{ id: '1', sender: 'jarvis', text: initialGreeting, time: 'Just now' }]);
+    setIsAiTalking(true);
+    await speakAiVoiceResponse(initialGreeting, () => {
+      setIsAiTalking(false);
+    });
+  };
+
+  const handleSendSpeechInput = async (inputText) => {
+    const textToSend = inputText || speechInput;
+    if (!textToSend) return;
+
+    const userMsg = { id: Date.now().toString(), sender: 'caller', text: textToSend, time: 'Just now' };
+    setConversation((prev) => [...prev, userMsg]);
+    setSpeechInput('');
+
+    setIsAiTalking(true);
+    const aiReply = await generateAiCallReply(textToSend, conversation);
+    const aiMsg = { id: (Date.now() + 1).toString(), sender: 'jarvis', text: aiReply, time: 'Just now' };
+    setConversation((prev) => [...prev, aiMsg]);
+
+    await speakAiVoiceResponse(aiReply, () => {
+      setIsAiTalking(false);
+    });
+  };
+
   // Subscribe to Call Events
   useEffect(() => {
     const unsubscribe = subscribeToCalls(
@@ -234,6 +272,7 @@ export default function HomeScreen() {
       },
       () => {
         setCallStatus('active');
+        startAiCallGreeting();
       },
       () => {
         setCallStatus('idle');
@@ -241,6 +280,7 @@ export default function HomeScreen() {
         setCallDuration(0);
         setIsMuted(false);
         setIsSpeakerOn(false);
+        stopAiVoiceResponse();
       }
     );
     return () => unsubscribe();
@@ -282,6 +322,7 @@ export default function HomeScreen() {
   };
 
   const handleHangup = async () => {
+    await stopAiVoiceResponse();
     await endCall();
     setCallStatus('idle');
   };
@@ -642,9 +683,45 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.transcriptContainer} contentContainerStyle={{ paddingBottom: 20 }}>
-              <Text style={styles.scanningText}>[ J.A.R.V.I.S AI LIVE AUDIO INTERACTION ]</Text>
+            {/* AI SPEAKING / LISTENING STATUS BAR */}
+            <View style={[styles.aiVoiceStatusBar, isAiTalking ? styles.statusTalking : styles.statusListening]}>
+              <Text style={styles.aiVoiceStatusText}>
+                {isAiTalking ? '🎙️ J.A.R.V.I.S IS SPEAKING...' : '👂 LISTENING TO CALLER...'}
+              </Text>
+            </View>
+
+            {/* LIVE TRANSCRIPT CONVERSATION BUBBLES */}
+            <ScrollView style={styles.transcriptContainer} contentContainerStyle={{ paddingBottom: 15 }}>
+              {conversation.map((msg) => (
+                <View
+                  key={msg.id}
+                  style={[
+                    styles.chatBubble,
+                    msg.sender === 'jarvis' ? styles.jarvisBubble : styles.callerBubble,
+                  ]}
+                >
+                  <Text style={styles.bubbleSender}>
+                    {msg.sender === 'jarvis' ? '🤖 J.A.R.V.I.S AI' : '👤 CALLER'}
+                  </Text>
+                  <Text style={styles.bubbleText}>{msg.text}</Text>
+                </View>
+              ))}
             </ScrollView>
+
+            {/* LIVE SIMULATED SPEECH INPUT BAR (FOR IN-CALL TESTING) */}
+            <View style={styles.liveSpeechInputBar}>
+              <TextInput
+                style={styles.liveTextInput}
+                placeholder="Simulate Caller Speech..."
+                placeholderTextColor={COLORS.textDim}
+                value={speechInput}
+                onChangeText={setSpeechInput}
+                onSubmitEditing={() => handleSendSpeechInput()}
+              />
+              <TouchableOpacity style={styles.sendSpeechBtn} onPress={() => handleSendSpeechInput()}>
+                <Text style={styles.sendSpeechBtnText}>SPEAK</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
       </Animated.View>
@@ -1228,12 +1305,89 @@ const styles = StyleSheet.create({
   },
   transcriptContainer: {
     flex: 1,
+    paddingHorizontal: 8,
   },
-  scanningText: {
+  aiVoiceStatusBar: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 8,
+    borderWidth: 1,
+  },
+  statusTalking: {
+    backgroundColor: 'rgba(0, 240, 255, 0.15)',
+    borderColor: COLORS.neonCyan,
+  },
+  statusListening: {
+    backgroundColor: 'rgba(0, 255, 102, 0.12)',
+    borderColor: COLORS.neonGreen,
+  },
+  aiVoiceStatusText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: COLORS.text,
+    letterSpacing: 1,
+  },
+  chatBubble: {
+    maxWidth: '85%',
+    padding: 10,
+    borderRadius: 12,
+    marginVertical: 4,
+  },
+  jarvisBubble: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(0, 240, 255, 0.12)',
+    borderColor: COLORS.neonCyan,
+    borderWidth: 1,
+    borderBottomLeftRadius: 2,
+  },
+  callerBubble: {
+    alignSelf: 'flex-end',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderWidth: 1,
+    borderBottomRightRadius: 2,
+  },
+  bubbleSender: {
+    fontSize: 9,
+    fontWeight: '900',
     color: COLORS.neonCyan,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    textAlign: 'center',
-    fontSize: 11,
-    marginTop: 10,
+    marginBottom: 2,
+    letterSpacing: 1,
+  },
+  bubbleText: {
+    fontSize: 13,
+    color: COLORS.text,
+    lineHeight: 18,
+  },
+  liveSpeechInputBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.glassBg,
+    borderColor: COLORS.glassBorder,
+    borderWidth: 1,
+    borderRadius: 24,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    marginTop: 6,
+  },
+  liveTextInput: {
+    flex: 1,
+    color: COLORS.text,
+    fontSize: 12,
+    paddingVertical: 6,
+  },
+  sendSpeechBtn: {
+    backgroundColor: COLORS.neonCyan,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  sendSpeechBtnText: {
+    color: '#000',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1,
   },
 });
