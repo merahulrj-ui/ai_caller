@@ -31,62 +31,80 @@ class AiInCallService : InCallService() {
 
   private fun bringAppToForeground() {
     try {
-      val mainIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-      }
-      if (mainIntent != null) {
-        startActivity(mainIntent)
-        logDebug(this, "SUCCESS: Brought MainActivity to foreground for Call UI!")
+      android.os.Handler(android.os.Looper.getMainLooper()).post {
+        try {
+          val mainIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+          }
+          if (mainIntent != null) {
+            startActivity(mainIntent)
+            logDebug(this@AiInCallService, "SUCCESS: Brought MainActivity to foreground for Call UI!")
+          }
+        } catch (e: Throwable) {
+          logDebug(this@AiInCallService, "ERROR bringing App UI to foreground: ${e.javaClass.simpleName} - ${e.message}")
+        }
       }
     } catch (e: Throwable) {
-        logDebug(this, "ERROR bringing App UI to foreground: ${e.message}")
+      logDebug(this, "Handler error: ${e.message}")
     }
   }
 
   override fun onCallAdded(call: Call) {
-    super.onCallAdded(call)
-    logDebug(this, "onCallAdded: State = ${call.state}")
-    activeCall = call
+    try {
+      super.onCallAdded(call)
+      logDebug(this, "onCallAdded: State = ${call.state}")
+      activeCall = call
 
-    val callback = object : Call.Callback() {
-      override fun onStateChanged(c: Call, state: Int) {
-        super.onStateChanged(c, state)
-        logDebug(this@AiInCallService, "Call Callback onStateChanged: $state")
-        if (state == Call.STATE_RINGING && isAiEnabled) {
+      val callback = object : Call.Callback() {
+        override fun onStateChanged(c: Call, state: Int) {
           try {
-            c.answer(VideoProfile.STATE_AUDIO_ONLY)
-            logDebug(this@AiInCallService, "SUCCESS: Answered via Callback!")
-            bringAppToForeground()
+            super.onStateChanged(c, state)
+            logDebug(this@AiInCallService, "Call Callback onStateChanged: $state")
+            if (state == Call.STATE_RINGING && isAiEnabled) {
+              try {
+                c.answer(VideoProfile.STATE_AUDIO_ONLY)
+                logDebug(this@AiInCallService, "SUCCESS: Answered via Callback!")
+                bringAppToForeground()
+              } catch (e: Throwable) {
+                logDebug(this@AiInCallService, "ERROR in Callback answer: ${e.message}")
+              }
+            }
           } catch (e: Throwable) {
-            logDebug(this@AiInCallService, "ERROR in Callback answer: ${e.message}")
+            logDebug(this@AiInCallService, "Callback onStateChanged error: ${e.message}")
           }
         }
       }
-    }
-    call.registerCallback(callback)
+      call.registerCallback(callback)
 
-    if (call.state == Call.STATE_RINGING) {
-      logDebug(this, "RINGING call detected in InCallService!")
-      if (isAiEnabled) {
-        logDebug(this, "AI is ACTIVE! Answering call via Telecom Call.answer()...")
-        try {
-          call.answer(VideoProfile.STATE_AUDIO_ONLY)
-          logDebug(this, "SUCCESS: Call.answer(STATE_AUDIO_ONLY) executed!")
-          bringAppToForeground()
-        } catch (e: Throwable) {
-          logDebug(this, "ERROR answering call in InCallService: ${e.javaClass.simpleName} - ${e.message}")
+      if (call.state == Call.STATE_RINGING) {
+        logDebug(this, "RINGING call detected in InCallService!")
+        if (isAiEnabled) {
+          logDebug(this, "AI is ACTIVE! Answering call via Telecom Call.answer()...")
+          try {
+            call.answer(VideoProfile.STATE_AUDIO_ONLY)
+            logDebug(this, "SUCCESS: Call.answer(STATE_AUDIO_ONLY) executed!")
+            bringAppToForeground()
+          } catch (e: Throwable) {
+            logDebug(this, "ERROR answering call in InCallService: ${e.javaClass.simpleName} - ${e.message}")
+          }
+        } else {
+          logDebug(this, "AI is OFFLINE. Skipping auto-answer.")
         }
-      } else {
-        logDebug(this, "AI is OFFLINE. Skipping auto-answer.")
       }
+    } catch (e: Throwable) {
+      logDebug(this, "FATAL CATCH in onCallAdded: ${e.javaClass.simpleName} - ${e.message}")
     }
   }
 
   override fun onCallRemoved(call: Call) {
-    super.onCallRemoved(call)
-    logDebug(this, "onCallRemoved")
-    if (activeCall == call) {
-      activeCall = null
+    try {
+      super.onCallRemoved(call)
+      logDebug(this, "onCallRemoved")
+      if (activeCall == call) {
+        activeCall = null
+      }
+    } catch (e: Throwable) {
+      logDebug(this, "Error in onCallRemoved: ${e.message}")
     }
   }
 }
