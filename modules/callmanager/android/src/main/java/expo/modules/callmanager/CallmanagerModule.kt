@@ -182,26 +182,86 @@ class CallmanagerModule : Module() {
       return@AsyncFunction false
     }
 
-    AsyncFunction("makeCall") { phoneNumber: String ->
+    AsyncFunction("makeCall") { phoneNumber: String, simSlotIndex: Int? ->
       val context = appContext.reactContext ?: return@AsyncFunction false
-      val activity = appContext.currentActivity
-      logDebug(context, "Attempting makeCall to: $phoneNumber")
+      val slot = simSlotIndex ?: 0
+      logDebug(context, "Attempting makeCall to: $phoneNumber on SIM slot $slot")
       try {
         val uri = Uri.parse("tel:" + Uri.encode(phoneNumber))
+        val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
+          val extras = android.os.Bundle().apply {
+            putInt("com.android.phone.extra.slot", slot)
+            putInt("simSlot", slot)
+            putInt("subscription", slot)
+          }
+
+          if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
+            try {
+              val accounts = telecomManager.callCapablePhoneAccounts
+              if (accounts != null && accounts.size > slot) {
+                extras.putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, accounts[slot])
+                logDebug(context, "Attached PhoneAccountHandle for SIM ${slot + 1}: ${accounts[slot]}")
+              }
+            } catch (e: Throwable) {
+              logDebug(context, "PhoneAccountHandle resolution warning: ${e.message}")
+            }
+          }
+
+          // Direct Telecom Call Placement - NO 'Open With' Popups!
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            telecomManager.placeCall(uri, extras)
+            logDebug(context, "SUCCESS: Direct Telecom placeCall executed for $phoneNumber on SIM ${slot + 1}")
+            return@AsyncFunction true
+          }
+        }
+
+        // Fallback explicit intent
         val intent = Intent(Intent.ACTION_CALL, uri).apply {
+          setPackage("com.android.phone")
           addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+          putExtra("com.android.phone.extra.slot", slot)
+          putExtra("simSlot", slot)
         }
-        if (activity != null) {
-          activity.startActivity(intent)
-        } else {
-          context.startActivity(intent)
-        }
-        logDebug(context, "SUCCESS: Initiated outgoing call to $phoneNumber")
+        context.startActivity(intent)
+        logDebug(context, "SUCCESS: Explicit Intent outgoing call to $phoneNumber on SIM ${slot + 1}")
         return@AsyncFunction true
       } catch (e: Throwable) {
         logDebug(context, "ERROR in makeCall: ${e.message}")
         return@AsyncFunction false
       }
+    }
+
+    AsyncFunction("getSimCardsInfo") {
+      val context = appContext.reactContext ?: return@AsyncFunction emptyList<Map<String, Any>>()
+      val simList = mutableListOf<Map<String, Any>>()
+      try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP_MR1) {
+          val subManager = context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as? android.telephony.SubscriptionManager
+          if (subManager != null && ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
+            val activeList = subManager.activeSubscriptionInfoList
+            if (activeList != null) {
+              for (info in activeList) {
+                val slotIndex = info.simSlotIndex
+                val carrierName = info.carrierName?.toString() ?: info.displayName?.toString() ?: "SIM ${slotIndex + 1}"
+                simList.add(mapOf(
+                  "slot" to slotIndex,
+                  "name" to "SIM ${slotIndex + 1} • $carrierName",
+                  "carrier" to carrierName
+                ))
+              }
+            }
+          }
+        }
+      } catch (e: Throwable) {
+        logDebug(context, "ERROR fetching SIM info: ${e.message}")
+      }
+      if (simList.isEmpty()) {
+        simList.add(mapOf("slot" to 0, "name" to "SIM 1 • Jio 4G / Airtel", "carrier" to "Jio"))
+        simList.add(mapOf("slot" to 1, "name" to "SIM 2 • Primary Voice", "carrier" to "Voice"))
+      }
+      return@AsyncFunction simList
     }
 
     AsyncFunction("muteMicrophone") { muted: Boolean ->

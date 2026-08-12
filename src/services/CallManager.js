@@ -147,10 +147,10 @@ export const endCall = async () => {
   }
 };
 
-export const makeCall = async (phoneNumber) => {
+export const makeCall = async (phoneNumber, simSlotIndex = 0) => {
   if (!CallmanagerModule || !CallmanagerModule.makeCall) return false;
   try {
-    return await CallmanagerModule.makeCall(phoneNumber);
+    return await CallmanagerModule.makeCall(phoneNumber, simSlotIndex);
   } catch (e) {
     console.error('Failed to make call:', e);
     return false;
@@ -183,6 +183,16 @@ export const getRealContacts = async () => {
     return await CallmanagerModule.getRealContacts();
   } catch (e) {
     console.error('Failed to fetch real contacts:', e);
+    return [];
+  }
+};
+
+export const getSimCardsInfo = async () => {
+  if (!CallmanagerModule || !CallmanagerModule.getSimCardsInfo) return [];
+  try {
+    return await CallmanagerModule.getSimCardsInfo();
+  } catch (e) {
+    console.error('Failed to fetch SIM cards info:', e);
     return [];
   }
 };

@@ -9,6 +9,7 @@ import {
   Dimensions,
   Platform,
   ScrollView,
+  FlatList,
   SafeAreaView,
   StatusBar,
   Share,
@@ -28,7 +29,8 @@ import {
   isDefaultDialer,
   setAiEnabled,
   getRealCallLogs,
-  getRealContacts
+  getRealContacts,
+  getSimCardsInfo
 } from '../services/CallManager';
 import {
   generateAiCallReply,
@@ -125,9 +127,13 @@ export default function HomeScreen() {
   const [pendingCallTarget, setPendingCallTarget] = useState('');
   const [selectedSim, setSelectedSim] = useState('SIM 1');
 
-  // Real Contacts & Real Call History Logs States
+  // Real Contacts & Real Call History Logs & Real SIM States
   const [contactsList, setContactsList] = useState(MOCK_CONTACTS);
   const [callLogsList, setCallLogsList] = useState(MOCK_LOGS);
+  const [simCardsList, setSimCardsList] = useState([
+    { slot: 0, name: 'SIM 1 • Primary Voice', carrier: 'Primary' },
+    { slot: 1, name: 'SIM 2 • Secondary Line', carrier: 'Secondary' }
+  ]);
 
   const fetchPhoneData = async () => {
     try {
@@ -138,6 +144,10 @@ export default function HomeScreen() {
       const realContacts = await getRealContacts();
       if (realContacts && realContacts.length > 0) {
         setContactsList(realContacts);
+      }
+      const sims = await getSimCardsInfo();
+      if (sims && sims.length > 0) {
+        setSimCardsList(sims);
       }
     } catch (e) {}
   };
@@ -345,11 +355,12 @@ export default function HomeScreen() {
 
   // Start Call on selected SIM (SIM 1 or SIM 2)
   const confirmCallWithSim = async (simSlot) => {
+    const slotIndex = simSlot === 'SIM 1' ? 0 : 1;
     setSelectedSim(simSlot);
     setShowSimModal(false);
     setCallerId(pendingCallTarget);
     setCallStatus('active');
-    await makeCall(pendingCallTarget);
+    await makeCall(pendingCallTarget, slotIndex);
   };
 
   const formatDuration = (secs) => {
@@ -489,11 +500,17 @@ export default function HomeScreen() {
                 value={contactSearch}
                 onChangeText={setContactSearch}
               />
-              <ScrollView style={styles.tabScroll}>
-                {filteredContacts.map((contact) => (
-                  <View key={contact.id} style={styles.contactCard}>
+              <FlatList
+                data={filteredContacts}
+                keyExtractor={(item) => item.id}
+                initialNumToRender={15}
+                maxToRenderPerBatch={10}
+                windowSize={5}
+                removeClippedSubviews={true}
+                renderItem={({ item: contact }) => (
+                  <View style={styles.contactCard}>
                     <View style={styles.avatarCircle}>
-                      <Text style={styles.avatarText}>{contact.name[0]}</Text>
+                      <Text style={styles.avatarText}>{contact.name ? contact.name[0] : '#'}</Text>
                     </View>
                     <View style={{ flex: 1, marginLeft: 12 }}>
                       <Text style={styles.contactName}>{contact.name}</Text>
@@ -503,30 +520,38 @@ export default function HomeScreen() {
                       <Text style={{ color: COLORS.neonCyan, fontSize: 16 }}>📞</Text>
                     </TouchableOpacity>
                   </View>
-                ))}
-              </ScrollView>
+                )}
+              />
             </View>
           )}
 
           {/* TAB 4: CALL LOGS / RECENTS */}
           {activeTab === 'recents' && (
-            <ScrollView style={styles.tabScroll}>
+            <View style={{ flex: 1 }}>
               <Text style={styles.cardTitle}>RECENT CALL HISTORY</Text>
-              {callLogsList.map((log) => (
-                <View key={log.id} style={styles.logCard}>
-                  <Text style={{ fontSize: 20, marginRight: 12 }}>
-                    {log.type === 'incoming' ? '↙️' : log.type === 'outgoing' ? '↗️' : '❌'}
-                  </Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.contactName}>{log.name}</Text>
-                    <Text style={styles.contactNumber}>{log.number} • {log.time}</Text>
+              <FlatList
+                data={callLogsList}
+                keyExtractor={(item) => item.id}
+                initialNumToRender={15}
+                maxToRenderPerBatch={10}
+                windowSize={5}
+                removeClippedSubviews={true}
+                renderItem={({ item: log }) => (
+                  <View style={styles.logCard}>
+                    <Text style={{ fontSize: 20, marginRight: 12 }}>
+                      {log.type === 'incoming' ? '↙️' : log.type === 'outgoing' ? '↗️' : '❌'}
+                    </Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.contactName}>{log.name}</Text>
+                      <Text style={styles.contactNumber}>{log.number} • {log.time}</Text>
+                    </View>
+                    <TouchableOpacity style={styles.contactDialBtn} onPress={() => triggerCallSimSelection(log.number)}>
+                      <Text style={{ color: COLORS.neonCyan, fontSize: 16 }}>📞</Text>
+                    </TouchableOpacity>
                   </View>
-                  <TouchableOpacity style={styles.contactDialBtn} onPress={() => triggerCallSimSelection(log.number)}>
-                    <Text style={{ color: COLORS.neonCyan, fontSize: 16 }}>📞</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </ScrollView>
+                )}
+              />
+            </View>
           )}
         </View>
 
@@ -561,29 +586,22 @@ export default function HomeScreen() {
             <Text style={styles.simModalTitle}>SELECT TELECOM LINE</Text>
             <Text style={styles.simModalSub}>Make Call to: {pendingCallTarget}</Text>
 
-            {/* SIM 1 Selection Card */}
-            <TouchableOpacity style={styles.simOptionCard} onPress={() => confirmCallWithSim('SIM 1')}>
-              <View style={styles.simIconBadge}>
-                <Text style={styles.simBadgeText}>1</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.simTitle}>SIM 1 • Jio 4G / Airtel</Text>
-                <Text style={styles.simSubText}>Primary Voice & Data Line</Text>
-              </View>
-              <Text style={{ fontSize: 18 }}>📶</Text>
-            </TouchableOpacity>
-
-            {/* SIM 2 Selection Card */}
-            <TouchableOpacity style={styles.simOptionCard} onPress={() => confirmCallWithSim('SIM 2')}>
-              <View style={[styles.simIconBadge, { backgroundColor: COLORS.neonBlue }]}>
-                <Text style={styles.simBadgeText}>2</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.simTitle}>SIM 2 • Vi 4G / BSNL</Text>
-                <Text style={styles.simSubText}>Secondary Voice Line</Text>
-              </View>
-              <Text style={{ fontSize: 18 }}>📶</Text>
-            </TouchableOpacity>
+            {simCardsList.map((sim, idx) => (
+              <TouchableOpacity
+                key={idx}
+                style={styles.simOptionCard}
+                onPress={() => confirmCallWithSim(`SIM ${sim.slot + 1}`)}
+              >
+                <View style={[styles.simIconBadge, idx === 1 && { backgroundColor: COLORS.neonBlue }]}>
+                  <Text style={styles.simBadgeText}>{sim.slot + 1}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.simTitle}>{sim.name}</Text>
+                  <Text style={styles.simSubText}>{sim.carrier} Cellular Line</Text>
+                </View>
+                <Text style={{ fontSize: 18 }}>📶</Text>
+              </TouchableOpacity>
+            ))}
 
             <TouchableOpacity style={styles.closeSimModalBtn} onPress={() => setShowSimModal(false)}>
               <Text style={styles.closeSimModalText}>CANCEL</Text>
@@ -1109,6 +1127,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.glassBorder,
     padding: 24,
     elevation: 30,
+    zIndex: 99999,
   },
   sheetHeader: {
     alignItems: 'center',
