@@ -346,7 +346,7 @@ class CallmanagerModule : Module() {
         audioManager.isSpeakerphoneOn = enable
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-          AiInCallService.activeCall?.setAudioRoute(
+          AiInCallService.instance?.setAudioRoute(
             if (enable) android.telecom.CallAudioState.ROUTE_SPEAKER
             else android.telecom.CallAudioState.ROUTE_EARPIECE
           )

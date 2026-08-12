@@ -12,6 +12,7 @@ import java.util.Locale
 class AiInCallService : InCallService() {
 
   companion object {
+    var instance: AiInCallService? = null
     var activeCall: Call? = null
     var isAiEnabled: Boolean = true
 
@@ -27,6 +28,16 @@ class AiInCallService : InCallService() {
         e.printStackTrace()
       }
     }
+  }
+
+  override fun onCreate() {
+    super.onCreate()
+    instance = this
+  }
+
+  override fun onDestroy() {
+    super.onDestroy()
+    if (instance == this) instance = null
   }
 
   private fun bringAppToForeground() {
