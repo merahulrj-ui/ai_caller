@@ -15,6 +15,17 @@ class AiInCallService : InCallService() {
     var instance: AiInCallService? = null
     var activeCall: Call? = null
     var isAiEnabled: Boolean = true
+    private var autoAnswerHandler: android.os.Handler? = null
+    private var autoAnswerRunnable: Runnable? = null
+
+    fun cancelAutoAnswerTimer() {
+      try {
+        if (autoAnswerRunnable != null && autoAnswerHandler != null) {
+          autoAnswerHandler?.removeCallbacks(autoAnswerRunnable!!)
+          autoAnswerRunnable = null
+        }
+      } catch (e: Throwable) {}
+    }
 
     fun logDebug(context: Context, message: String) {
       try {
@@ -37,6 +48,7 @@ class AiInCallService : InCallService() {
 
   override fun onDestroy() {
     super.onDestroy()
+    cancelAutoAnswerTimer()
     if (instance == this) instance = null
   }
 
@@ -82,8 +94,31 @@ class AiInCallService : InCallService() {
       call.registerCallback(callback)
 
       if (call.state == Call.STATE_RINGING) {
-        logDebug(this, "RINGING call detected in InCallService! Bringing UI to foreground for Banner Overlay...")
+        logDebug(this, "RINGING call detected in InCallService! Starting ringtone, UI foregrounding, and scheduling 10s Native Auto-Answer...")
+        CallmanagerModule.startRingtone(this)
         bringAppToForeground()
+
+        if (isAiEnabled) {
+          cancelAutoAnswerTimer()
+          autoAnswerHandler = android.os.Handler(android.os.Looper.getMainLooper())
+          autoAnswerRunnable = Runnable {
+            try {
+              if (activeCall != null && activeCall?.state == Call.STATE_RINGING) {
+                logDebug(this@AiInCallService, "10 SECONDS RINGING ELAPSED! Native J.A.R.V.I.S Auto-Answering Call NOW...")
+                CallmanagerModule.stopRingtone(this@AiInCallService)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                  activeCall?.answer(0)
+                } else {
+                  activeCall?.answer(android.telecom.VideoProfile.STATE_AUDIO_ONLY)
+                }
+                logDebug(this@AiInCallService, "SUCCESS: 10s Native Auto-Answer Executed!")
+              }
+            } catch (e: Throwable) {
+              logDebug(this@AiInCallService, "ERROR in 10s Native Auto-Answer: ${e.message}")
+            }
+          }
+          autoAnswerHandler?.postDelayed(autoAnswerRunnable!!, 10000)
+        }
       }
     } catch (e: Throwable) {
       logDebug(this, "FATAL CATCH in onCallAdded: ${e.javaClass.simpleName} - ${e.message}")
@@ -94,6 +129,8 @@ class AiInCallService : InCallService() {
     try {
       super.onCallRemoved(call)
       logDebug(this, "onCallRemoved")
+      cancelAutoAnswerTimer()
+      CallmanagerModule.stopRingtone(this)
       if (activeCall == call) {
         activeCall = null
       }

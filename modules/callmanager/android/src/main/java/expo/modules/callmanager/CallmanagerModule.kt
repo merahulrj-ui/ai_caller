@@ -12,8 +12,8 @@ import android.Manifest
 import android.app.role.RoleManager
 import android.content.pm.PackageManager
 import android.net.Uri
-import android.speech.tts.TextToSpeech
-import android.media.AudioAttributes
+import android.media.RingtoneManager
+import android.media.Ringtone
 import androidx.core.content.ContextCompat
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -26,6 +26,47 @@ class CallmanagerModule : Module() {
   private var phoneStateListener: PhoneStateListener? = null
   private var tts: TextToSpeech? = null
   private var isTtsReady = false
+
+  companion object {
+    var ringtone: Ringtone? = null
+
+    fun startRingtone(context: Context) {
+      try {
+        if (ringtone == null || !(ringtone?.isPlaying ?: false)) {
+          val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+          ringtone = RingtoneManager.getRingtone(context, uri)
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            ringtone?.isLooping = true
+          }
+        }
+        ringtone?.play()
+        logDebug(context, "SUCCESS: Started native Ringtone playback!")
+      } catch (e: Throwable) {
+        logDebug(context, "ERROR starting ringtone: ${e.message}")
+      }
+    }
+
+    fun stopRingtone(context: Context) {
+      try {
+        ringtone?.stop()
+        ringtone = null
+        logDebug(context, "SUCCESS: Stopped native Ringtone playback")
+      } catch (e: Throwable) {}
+    }
+
+    fun logDebug(context: Context, message: String) {
+      try {
+        val prefs = context.getSharedPreferences("callmanager_debug", Context.MODE_PRIVATE)
+        val timeStamp = SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(Date())
+        val existingLogs = prefs.getString("logs", "") ?: ""
+        val newLogs = "[$timeStamp] $message\n$existingLogs"
+        val lines = newLogs.split("\n").take(50).joinToString("\n")
+        prefs.edit().putString("logs", lines).apply()
+      } catch (e: Throwable) {
+        e.printStackTrace()
+      }
+    }
+  }
 
   private fun initNativeTts(context: Context) {
     if (tts == null) {
@@ -154,15 +195,21 @@ class CallmanagerModule : Module() {
     AsyncFunction("answerCall") {
       val context = appContext.reactContext ?: return@AsyncFunction false
       logDebug(context, "Attempting answerCall()...")
+      stopRingtone(context)
+      AiInCallService.cancelAutoAnswerTimer()
 
       AiInCallService.activeCall?.let { call ->
         try {
-          call.answer(VideoProfile.STATE_AUDIO_ONLY)
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            call.answer(0)
+          } else {
+            call.answer(VideoProfile.STATE_AUDIO_ONLY)
+          }
           logDebug(context, "SUCCESS: Answered via AiInCallService activeCall!")
           sendEvent("onCallAnswered", mapOf("success" to true))
           return@AsyncFunction true
         } catch (e: Throwable) {
-          logDebug(context, "ERROR in AiInCallService.activeCall.answer(): ${e.message}")
+          logDebug(context, "ERROR in activeCall.answer(): ${e.message}")
         }
       }
 
@@ -177,9 +224,7 @@ class CallmanagerModule : Module() {
             sendEvent("onCallAnswered", mapOf("success" to true))
             return@AsyncFunction true
           } catch (e: Throwable) {
-            logDebug(context, "ERROR in acceptRingingCall: ${e.javaClass.simpleName} - ${e.message}")
-            e.printStackTrace()
-            return@AsyncFunction false
+            logDebug(context, "ERROR in acceptRingingCall: ${e.message}")
           }
         }
       }
@@ -189,24 +234,30 @@ class CallmanagerModule : Module() {
     AsyncFunction("endCall") {
       val context = appContext.reactContext ?: return@AsyncFunction false
       logDebug(context, "Attempting endCall()...")
-      try {
-        AiInCallService.activeCall?.let { call ->
+      stopRingtone(context)
+      AiInCallService.cancelAutoAnswerTimer()
+
+      AiInCallService.activeCall?.let { call ->
+        try {
           call.disconnect()
           logDebug(context, "SUCCESS: Disconnected call via AiInCallService!")
           sendEvent("onCallEnded", mapOf("success" to true))
           return@AsyncFunction true
+        } catch (e: Throwable) {
+          logDebug(context, "ERROR disconnecting via activeCall: ${e.message}")
         }
-        val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-          if (ContextCompat.checkSelfPermission(context, Manifest.permission.ANSWER_PHONE_CALLS) == PackageManager.PERMISSION_GRANTED) {
-            telecomManager.endCall()
-            logDebug(context, "SUCCESS: Ended call via TelecomManager.endCall()!")
-            sendEvent("onCallEnded", mapOf("success" to true))
-            return@AsyncFunction true
-          }
+      }
+
+      val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        try {
+          telecomManager.endCall()
+          logDebug(context, "SUCCESS: Ended call via telecomManager.endCall()")
+          sendEvent("onCallEnded", mapOf("success" to true))
+          return@AsyncFunction true
+        } catch (e: Throwable) {
+          logDebug(context, "ERROR in telecomManager.endCall(): ${e.message}")
         }
-      } catch (e: Throwable) {
-        logDebug(context, "ERROR in endCall: ${e.message}")
       }
       return@AsyncFunction false
     }

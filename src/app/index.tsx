@@ -333,10 +333,13 @@ export default function HomeScreen() {
     await fetchPhoneData();
   };
 
-  const toggleAI = () => {
+  const toggleAI = async () => {
     const nextState = !aiActive;
     setAiActive(nextState);
     setAiEnabled(nextState);
+    if (nextState) {
+      await speakAiVoiceResponse("Welcome Sir! J.A.R.V.I.S Autonomous AI Call System is now online and active.");
+    }
   };
 
   const handleMuteToggle = async () => {
@@ -454,20 +457,7 @@ export default function HomeScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* Gemini AI Key Card */}
-              <View style={[styles.glassCard, { marginTop: 12 }]}>
-                <Text style={styles.cardTitle}>GEMINI AI BRAIN CONFIGURATION</Text>
-                <TextInput
-                  style={[styles.searchInput, { marginBottom: 0 }]}
-                  placeholder="Paste Gemini API Key (Optional)..."
-                  placeholderTextColor={COLORS.textDim}
-                  value={apiKeyInput}
-                  onChangeText={(val) => {
-                    setApiKeyInput(val);
-                    setGeminiApiKey(val);
-                  }}
-                />
-              </View>
+
 
               {/* Debugger Panel */}
               <View style={[styles.glassCard, { marginTop: 14, marginBottom: 20 }]}>
@@ -653,140 +643,149 @@ export default function HomeScreen() {
         </View>
       </Modal>
 
-      {/* FULL IN-CALL OVERLAY SCREEN */}
-      <Animated.View style={[styles.bottomSheet, { transform: [{ translateY: slideUpAnim }] }]}>
-        <View style={styles.sheetHeader}>
-          <View style={styles.dragHandle} />
-        </View>
-
-        {callStatus === 'ringing' ? (
-          /* DEDICATED INCOMING CALL SCREEN VIEW */
-          <View style={styles.incomingCallContainer}>
-            <View style={styles.incomingBadge}>
-              <View style={styles.redPulseDot} />
-              <Text style={styles.incomingBadgeText}>INCOMING CALL TRANSMISSION</Text>
-            </View>
-
-            {/* Glowing Avatar */}
-            <View style={styles.incomingAvatarRing}>
-              <Animated.View style={[styles.avatarPulseWave, { transform: [{ scale: pulseAnim }] }]} />
-              <View style={styles.incomingAvatarCircle}>
-                <Text style={styles.incomingAvatarInitial}>
-                  {callerId ? callerId[0].toUpperCase() : '📞'}
-                </Text>
-              </View>
-            </View>
-
-            <Text style={styles.incomingCallerName}>{callerId || 'Incoming Call'}</Text>
-            <Text style={styles.incomingCallerSub}>Telecom Voice Line • India</Text>
-
-            {aiActive && (
-              <View style={styles.aiAnsweringTag}>
-                <Text style={styles.aiAnsweringText}>🤖 J.A.R.V.I.S AUTO-ANSWER ACTIVE</Text>
-              </View>
-            )}
-
-            {/* INCOMING ACTION BUTTONS (DECLINE / ACCEPT) */}
-            <View style={styles.incomingActionRow}>
-              <TouchableOpacity style={styles.hangupButtonContainer} onPress={handleHangup}>
-                <View style={styles.hangupCircleBtn}>
-                  <PureVectorCallEndIcon />
-                </View>
-                <Text style={styles.hangupText}>Decline</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.hangupButtonContainer}
-                onPress={async () => {
-                  if (autoAnswerTimerRef.current) clearTimeout(autoAnswerTimerRef.current);
-                  await answerCall();
-                  await enableSpeakerphone(true);
-                  setIsSpeakerOn(true);
-                  setCallStatus('active');
-                }}
-              >
-                <View style={[styles.hangupCircleBtn, { backgroundColor: COLORS.neonGreen, shadowColor: COLORS.neonGreen }]}>
-                  <Text style={{ fontSize: 26, color: '#000' }}>📞</Text>
-                </View>
-                <Text style={[styles.hangupText, { color: COLORS.neonGreen }]}>Answer</Text>
-              </TouchableOpacity>
-            </View>
+      {/* FULL IN-CALL OVERLAY SCREEN NATIVE MODAL */}
+      <Modal
+        visible={callStatus === 'ringing' || callStatus === 'active'}
+        animationType="slide"
+        statusBarTranslucent={true}
+        onRequestClose={handleHangup}
+      >
+        <View style={[styles.bottomSheet, { flex: 1, height: '100%', borderTopLeftRadius: 0, borderTopRightRadius: 0 }]}>
+          <View style={styles.sheetHeader}>
+            <View style={styles.dragHandle} />
           </View>
-        ) : (
-          /* ACTIVE CALL SCREEN VIEW */
-          <View style={{ flex: 1 }}>
-            <View style={styles.callInfoCard}>
-              <View>
-                <Text style={styles.callLabel}>{`CALL VIA ${selectedSim}`}</Text>
-                <Text style={styles.callerIdText}>{callerId || 'Unknown Number'}</Text>
+
+          {callStatus === 'ringing' ? (
+            /* DEDICATED INCOMING CALL SCREEN VIEW */
+            <View style={styles.incomingCallContainer}>
+              <View style={styles.incomingBadge}>
+                <View style={styles.redPulseDot} />
+                <Text style={styles.incomingBadgeText}>INCOMING CALL TRANSMISSION</Text>
               </View>
-              <View style={styles.timerBadge}>
-                <Text style={styles.timerText}>{formatDuration(callDuration)}</Text>
-              </View>
-            </View>
 
-            {/* IN-CALL CONTROLS GRID */}
-            <View style={styles.inCallActionGrid}>
-              <TouchableOpacity style={[styles.inCallActionBtn, isMuted && styles.actionBtnActive]} onPress={handleMuteToggle}>
-                <Text style={styles.inCallActionIcon}>{isMuted ? '🎙️❌' : '🎙️'}</Text>
-                <Text style={styles.inCallActionText}>{isMuted ? 'UNMUTE' : 'MUTE'}</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={[styles.inCallActionBtn, isSpeakerOn && styles.actionBtnActive]} onPress={handleSpeakerToggle}>
-                <Text style={styles.inCallActionIcon}>{isSpeakerOn ? '🔊' : '🔈'}</Text>
-                <Text style={styles.inCallActionText}>{isSpeakerOn ? 'SPEAKER ON' : 'SPEAKER'}</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.hangupButtonContainer} onPress={handleHangup}>
-                <View style={styles.hangupCircleBtn}>
-                  <PureVectorCallEndIcon />
-                </View>
-                <Text style={styles.hangupText}>End Call</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* AI SPEAKING / LISTENING STATUS BAR */}
-            <View style={[styles.aiVoiceStatusBar, isAiTalking ? styles.statusTalking : styles.statusListening]}>
-              <Text style={styles.aiVoiceStatusText}>
-                {isAiTalking ? '🎙️ J.A.R.V.I.S IS SPEAKING...' : '👂 LISTENING TO CALLER...'}
-              </Text>
-            </View>
-
-            {/* LIVE TRANSCRIPT CONVERSATION BUBBLES */}
-            <ScrollView style={styles.transcriptContainer} contentContainerStyle={{ paddingBottom: 15 }}>
-              {conversation.map((msg) => (
-                <View
-                  key={msg.id}
-                  style={[
-                    styles.chatBubble,
-                    msg.sender === 'jarvis' ? styles.jarvisBubble : styles.callerBubble,
-                  ]}
-                >
-                  <Text style={styles.bubbleSender}>
-                    {msg.sender === 'jarvis' ? '🤖 J.A.R.V.I.S AI' : '👤 CALLER'}
+              {/* Glowing Avatar */}
+              <View style={styles.incomingAvatarRing}>
+                <Animated.View style={[styles.avatarPulseWave, { transform: [{ scale: pulseAnim }] }]} />
+                <View style={styles.incomingAvatarCircle}>
+                  <Text style={styles.incomingAvatarInitial}>
+                    {callerId ? callerId[0].toUpperCase() : '📞'}
                   </Text>
-                  <Text style={styles.bubbleText}>{msg.text}</Text>
                 </View>
-              ))}
-            </ScrollView>
+              </View>
 
-            {/* LIVE SIMULATED SPEECH INPUT BAR (FOR IN-CALL TESTING) */}
-            <View style={styles.liveSpeechInputBar}>
-              <TextInput
-                style={styles.liveTextInput}
-                placeholder="Simulate Caller Speech..."
-                placeholderTextColor={COLORS.textDim}
-                value={speechInput}
-                onChangeText={setSpeechInput}
-                onSubmitEditing={() => handleSendSpeechInput()}
-              />
-              <TouchableOpacity style={styles.sendSpeechBtn} onPress={() => handleSendSpeechInput()}>
-                <Text style={styles.sendSpeechBtnText}>SPEAK</Text>
-              </TouchableOpacity>
+              <Text style={styles.incomingCallerName}>{callerId || 'Incoming Call'}</Text>
+              <Text style={styles.incomingCallerSub}>Telecom Voice Line • India</Text>
+
+              {aiActive && (
+                <View style={styles.aiAnsweringTag}>
+                  <Text style={styles.aiAnsweringText}>🤖 J.A.R.V.I.S AUTO-ANSWER ACTIVE (10s)</Text>
+                </View>
+              )}
+
+              {/* INCOMING ACTION BUTTONS (DECLINE / ACCEPT) */}
+              <View style={styles.incomingActionRow}>
+                <TouchableOpacity style={styles.hangupButtonContainer} onPress={handleHangup}>
+                  <View style={styles.hangupCircleBtn}>
+                    <PureVectorCallEndIcon />
+                  </View>
+                  <Text style={styles.hangupText}>Decline</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.hangupButtonContainer}
+                  onPress={async () => {
+                    if (autoAnswerTimerRef.current) clearTimeout(autoAnswerTimerRef.current);
+                    await answerCall();
+                    await enableSpeakerphone(true);
+                    setIsSpeakerOn(true);
+                    setCallStatus('active');
+                  }}
+                >
+                  <View style={[styles.hangupCircleBtn, { backgroundColor: COLORS.neonGreen, shadowColor: COLORS.neonGreen }]}>
+                    <Text style={{ fontSize: 26, color: '#000' }}>📞</Text>
+                  </View>
+                  <Text style={[styles.hangupText, { color: COLORS.neonGreen }]}>Answer</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
-        )}
-      </Animated.View>
+          ) : (
+            /* ACTIVE IN-CALL CHAT BUBBLES VIEW */
+            <View style={{ flex: 1 }}>
+              <View style={styles.callInfoCard}>
+                <View>
+                  <Text style={styles.callCardTitle}>{callerId || 'Active Call'}</Text>
+                  <Text style={styles.callCardSub}>
+                    {selectedSim} • {formatDuration(callDuration)}
+                  </Text>
+                </View>
+
+                {/* iPhone Style Circular Red Hangup Button */}
+                <TouchableOpacity style={styles.hangupButtonContainer} onPress={handleHangup}>
+                  <View style={styles.hangupCircleBtn}>
+                    <PureVectorCallEndIcon />
+                  </View>
+                  <Text style={styles.hangupText}>End Call</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Call Control Action Buttons Bar */}
+              <View style={styles.callActionsBar}>
+                <TouchableOpacity style={[styles.actionIconButton, isMuted && styles.actionActiveBtn]} onPress={handleMuteToggle}>
+                  <Text style={styles.actionIconText}>{isMuted ? '🔇' : '🎙️'}</Text>
+                  <Text style={styles.actionIconLabel}>{isMuted ? 'UNMUTE' : 'MUTE'}</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={[styles.actionIconButton, isSpeakerOn && styles.actionActiveBtn]} onPress={handleSpeakerToggle}>
+                  <Text style={styles.actionIconText}>{isSpeakerOn ? '🔊' : '🔈'}</Text>
+                  <Text style={styles.actionIconLabel}>SPEAKER</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={[styles.actionIconButton, aiActive && styles.actionActiveBtn]} onPress={toggleAI}>
+                  <Text style={styles.actionIconText}>🤖</Text>
+                  <Text style={styles.actionIconLabel}>J.A.R.V.I.S</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* LIVE IN-CALL CONVERSATION CHAT FEED */}
+              <View style={styles.chatFeedContainer}>
+                <View style={styles.chatHeaderRow}>
+                  <Text style={styles.chatFeedTitle}>LIVE AI CONVERSATION FEED</Text>
+                  {isAiTalking && (
+                    <View style={styles.talkingBadge}>
+                      <Text style={styles.talkingText}>🎙️ J.A.R.V.I.S SPEAKING</Text>
+                    </View>
+                  )}
+                </View>
+
+                <ScrollView style={styles.chatScroll} showsVerticalScrollIndicator={false}>
+                  {conversation.map((msg) => (
+                    <View key={msg.id} style={[styles.chatBubble, msg.sender === 'jarvis' ? styles.jarvisBubble : styles.callerBubble]}>
+                      <Text style={styles.chatSender}>{msg.sender === 'jarvis' ? '🤖 J.A.R.V.I.S' : '👤 CALLER'}</Text>
+                      <Text style={styles.chatMessageText}>{msg.text}</Text>
+                      <Text style={styles.chatTime}>{msg.time}</Text>
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+
+              {/* Live Speech Simulation Bar */}
+              <View style={styles.speechSimulationCard}>
+                <TextInput
+                  style={styles.speechInput}
+                  placeholder="Simulate Caller Speech..."
+                  placeholderTextColor={COLORS.textDim}
+                  value={speechInput}
+                  onChangeText={setSpeechInput}
+                  onSubmitEditing={() => handleSendSpeechInput()}
+                />
+                <TouchableOpacity style={styles.sendSpeechBtn} onPress={() => handleSendSpeechInput()}>
+                  <Text style={styles.sendSpeechBtnText}>SPEAK</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
