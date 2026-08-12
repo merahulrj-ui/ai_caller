@@ -137,4 +137,35 @@ export const clearDebugLogs = async () => {
   }
 };
 
+export const endCall = async () => {
+  if (!CallmanagerModule || !CallmanagerModule.endCall) return false;
+  try {
+    return await CallmanagerModule.endCall();
+  } catch (e) {
+    console.error('Failed to end call:', e);
+    return false;
+  }
+};
+
+export const makeCall = async (phoneNumber) => {
+  if (!CallmanagerModule || !CallmanagerModule.makeCall) return false;
+  try {
+    return await CallmanagerModule.makeCall(phoneNumber);
+  } catch (e) {
+    console.error('Failed to make call:', e);
+    return false;
+  }
+};
+
+export const muteMicrophone = async (muted) => {
+  if (!CallmanagerModule || !CallmanagerModule.muteMicrophone) return false;
+  try {
+    return await CallmanagerModule.muteMicrophone(muted);
+  } catch (e) {
+    console.error('Failed to mute microphone:', e);
+    return false;
+  }
+};
+
+
 

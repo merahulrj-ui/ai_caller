@@ -11,6 +11,7 @@ import android.os.Build
 import android.Manifest
 import android.app.role.RoleManager
 import android.content.pm.PackageManager
+import android.net.Uri
 import androidx.core.content.ContextCompat
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -125,7 +126,6 @@ class CallmanagerModule : Module() {
       val context = appContext.reactContext ?: return@AsyncFunction false
       logDebug(context, "Attempting answerCall()...")
 
-      // 1. Try InCallService activeCall first
       AiInCallService.activeCall?.let { call ->
         try {
           call.answer(VideoProfile.STATE_AUDIO_ONLY)
@@ -137,7 +137,6 @@ class CallmanagerModule : Module() {
         }
       }
 
-      // 2. Fallback to TelecomManager.acceptRingingCall()
       val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
       val hasPerm = ContextCompat.checkSelfPermission(context, Manifest.permission.ANSWER_PHONE_CALLS) == PackageManager.PERMISSION_GRANTED
 
@@ -156,6 +155,67 @@ class CallmanagerModule : Module() {
         }
       }
       return@AsyncFunction false
+    }
+
+    AsyncFunction("endCall") {
+      val context = appContext.reactContext ?: return@AsyncFunction false
+      logDebug(context, "Attempting endCall()...")
+      try {
+        AiInCallService.activeCall?.let { call ->
+          call.disconnect()
+          logDebug(context, "SUCCESS: Disconnected call via AiInCallService!")
+          sendEvent("onCallEnded", mapOf("success" to true))
+          return@AsyncFunction true
+        }
+        val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+          if (ContextCompat.checkSelfPermission(context, Manifest.permission.ANSWER_PHONE_CALLS) == PackageManager.PERMISSION_GRANTED) {
+            telecomManager.endCall()
+            logDebug(context, "SUCCESS: Ended call via TelecomManager.endCall()!")
+            sendEvent("onCallEnded", mapOf("success" to true))
+            return@AsyncFunction true
+          }
+        }
+      } catch (e: Throwable) {
+        logDebug(context, "ERROR in endCall: ${e.message}")
+      }
+      return@AsyncFunction false
+    }
+
+    AsyncFunction("makeCall") { phoneNumber: String ->
+      val context = appContext.reactContext ?: return@AsyncFunction false
+      val activity = appContext.currentActivity
+      logDebug(context, "Attempting makeCall to: $phoneNumber")
+      try {
+        val uri = Uri.parse("tel:" + Uri.encode(phoneNumber))
+        val intent = Intent(Intent.ACTION_CALL, uri).apply {
+          addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        if (activity != null) {
+          activity.startActivity(intent)
+        } else {
+          context.startActivity(intent)
+        }
+        logDebug(context, "SUCCESS: Initiated outgoing call to $phoneNumber")
+        return@AsyncFunction true
+      } catch (e: Throwable) {
+        logDebug(context, "ERROR in makeCall: ${e.message}")
+        return@AsyncFunction false
+      }
+    }
+
+    AsyncFunction("muteMicrophone") { muted: Boolean ->
+      val context = appContext.reactContext ?: return@AsyncFunction false
+      logDebug(context, "Setting Mute = $muted")
+      try {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioManager.isMicrophoneMute = muted
+        logDebug(context, "SUCCESS: Microphone Mute set to $muted")
+        return@AsyncFunction true
+      } catch (e: Throwable) {
+        logDebug(context, "ERROR setting mute: ${e.message}")
+        return@AsyncFunction false
+      }
     }
 
     AsyncFunction("enableSpeakerphone") { enable: Boolean ->

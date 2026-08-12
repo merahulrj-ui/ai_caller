@@ -40,6 +40,8 @@
         "RECORD_AUDIO",
         "CALL_PHONE",
         "READ_CALL_LOG",
+        "WRITE_CALL_LOG",
+        "READ_CONTACTS",
         "ANSWER_PHONE_CALLS",
         "READ_PHONE_NUMBERS",
         "MODIFY_AUDIO_SETTINGS"
