@@ -283,14 +283,14 @@ export default function HomeScreen() {
         }
 
         if (aiActive) {
-          // Ring for 15 seconds. If user doesn't pick up/decline, AI auto-answers after 15 seconds!
+          // Ring for 10 seconds. If user doesn't pick up/decline, AI auto-answers after 10 seconds!
           autoAnswerTimerRef.current = setTimeout(async () => {
             await answerCall();
             await enableSpeakerphone(true);
             setIsSpeakerOn(true);
             setCallStatus('active');
             await startAiCallGreeting();
-          }, 15000);
+          }, 10000);
         }
       },
       async () => {
