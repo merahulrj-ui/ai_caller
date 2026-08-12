@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
+  SafeAreaView,
+  StatusBar,
   StyleSheet,
   Text,
   View,
@@ -11,9 +13,8 @@ import {
   Dimensions,
   Animated,
   Easing,
-  StatusBar,
-  SafeAreaView,
 } from 'react-native';
+import * as Speech from 'expo-speech';
 import {
   requestPermissions,
   answerCall,
@@ -231,7 +232,7 @@ export default function HomeScreen() {
 
   const startAiCallGreeting = async () => {
     try {
-      const greeting = "Hello! Main J.A.R.V.I.S Autonomous AI Call Assistant bol raha hu. Aap kisse baat karna chahte hain?";
+      const greeting = "Hello! Main Rahul ka assistant Jarvis bol raha hu. Rahul ji abhi busy hain, bataiye main kya message de du?";
       setConversation([{ id: '1', sender: 'jarvis', text: greeting, time: new Date().toLocaleTimeString() }]);
       setIsAiTalking(true);
       await speakCallAudio(greeting);
@@ -280,11 +281,15 @@ export default function HomeScreen() {
           }, 10000);
         }
       },
-      async () => {
+      async (evt) => {
         if (autoAnswerTimerRef.current) clearTimeout(autoAnswerTimerRef.current);
+        const wasRinging = callStatus === 'ringing';
         setCallStatus('active');
         await enableSpeakerphone(true);
         setIsSpeakerOn(true);
+        if (wasRinging || (evt && evt.isIncoming)) {
+          await startAiCallGreeting();
+        }
       },
       async () => {
         if (autoAnswerTimerRef.current) clearTimeout(autoAnswerTimerRef.current);
@@ -302,7 +307,7 @@ export default function HomeScreen() {
       if (autoAnswerTimerRef.current) clearTimeout(autoAnswerTimerRef.current);
       unsubscribe();
     };
-  }, [aiActive]);
+  }, [aiActive, callStatus]);
 
   const checkDefaultStatus = async () => {
     const defaultStatus = await isDefaultDialer();
@@ -326,7 +331,12 @@ export default function HomeScreen() {
     setAiActive(nextState);
     setAiEnabled(nextState);
     if (nextState) {
-      await speakAiVoiceResponse("Welcome Sir. Jarvis autonomous system is online.");
+      Speech.stop();
+      Speech.speak("Welcome Sir. Jarvis autonomous system is online.", {
+        language: 'en-US',
+        pitch: 1.0,
+        rate: 0.9,
+      });
     }
   };
 

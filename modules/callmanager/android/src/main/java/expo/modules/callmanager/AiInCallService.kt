@@ -60,8 +60,28 @@ class AiInCallService : InCallService() {
     if (instance == this) instance = null
   }
 
+  private fun wakeUpScreenHardware() {
+    try {
+      val pm = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+      if (pm != null && !pm.isInteractive) {
+        @Suppress("DEPRECATION")
+        val wl = pm.newWakeLock(
+          android.os.PowerManager.FULL_WAKE_LOCK or
+          android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP or
+          android.os.PowerManager.ON_AFTER_RELEASE,
+          "ai_caller:incoming_call_wake"
+        )
+        wl.acquire(5000)
+        logDebug(this, "SUCCESS: Woke up physical screen hardware for Lockscreen Banner!")
+      }
+    } catch (e: Throwable) {
+      logDebug(this, "WakeLock warning: ${e.message}")
+    }
+  }
+
   private fun showFullScreenCallNotification(callerNumber: String) {
     try {
+      wakeUpScreenHardware()
       val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
       val channelId = "ai_caller_full_screen_channel"
 
@@ -154,11 +174,14 @@ class AiInCallService : InCallService() {
     }
   }
 
+  private var isIncomingCall = false
+
   override fun onCallAdded(call: Call) {
     try {
       super.onCallAdded(call)
       logDebug(this, "onCallAdded: State = ${call.state}")
       activeCall = call
+      isIncomingCall = (call.state == Call.STATE_RINGING)
 
       val callback = object : Call.Callback() {
         override fun onStateChanged(c: Call, state: Int) {
@@ -166,6 +189,7 @@ class AiInCallService : InCallService() {
             super.onStateChanged(c, state)
             logDebug(this@AiInCallService, "Call Callback onStateChanged: $state")
             if (state == Call.STATE_RINGING) {
+              isIncomingCall = true
               val number = c.details?.handle?.schemeSpecificPart ?: "Incoming Call"
               showFullScreenCallNotification(number)
               bringAppToForeground()
@@ -173,7 +197,7 @@ class AiInCallService : InCallService() {
               cancelCallNotification()
               enableNativeSpeakerphone(true)
               CallmanagerModule.vibrateCallConnected(this@AiInCallService)
-              CallmanagerModule.emitNativeEvent("onCallAnswered", mapOf("success" to true))
+              CallmanagerModule.emitNativeEvent("onCallAnswered", mapOf("success" to true, "isIncoming" to isIncomingCall))
             } else if (state == Call.STATE_DISCONNECTED) {
               cancelCallNotification()
               enableNativeSpeakerphone(false)
@@ -187,6 +211,7 @@ class AiInCallService : InCallService() {
       call.registerCallback(callback)
 
       if (call.state == Call.STATE_RINGING) {
+        isIncomingCall = true
         val callerNum = call.details?.handle?.schemeSpecificPart ?: "Incoming Call"
         logDebug(this, "RINGING call detected in InCallService! Starting ringtone, FullScreenIntent, and 10s Native Auto-Answer...")
         CallmanagerModule.startRingtone(this)
@@ -208,7 +233,7 @@ class AiInCallService : InCallService() {
                 }
                 logDebug(this@AiInCallService, "SUCCESS: 10s Native Auto-Answer Executed!")
                 enableNativeSpeakerphone(true)
-                CallmanagerModule.emitNativeEvent("onCallAnswered", mapOf("success" to true))
+                CallmanagerModule.emitNativeEvent("onCallAnswered", mapOf("success" to true, "isIncoming" to true))
               }
             } catch (e: Throwable) {
               logDebug(this@AiInCallService, "ERROR in 10s Native Auto-Answer: ${e.message}")

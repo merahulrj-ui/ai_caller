@@ -14,10 +14,10 @@ export const setGeminiApiKey = (key) => {
     model = genAI.getGenerativeModel({
       model: 'gemini-1.5-flash',
       systemInstruction:
-        'You are J.A.R.V.I.S, an autonomous AI Call Assistant for Rahul. ' +
-        'You answer incoming phone calls politely when Rahul is unavailable. ' +
-        'Respond in short, natural, human-like sentences (1-2 sentences max) in Hindi or English depending on caller language. ' +
-        'Ask who is calling, take messages, or provide helpful answers.',
+        'You are Jarvis, a natural human-like AI call assistant for Rahul. ' +
+        'Answer phone calls politely when Rahul is unavailable. ' +
+        'Respond in 1 short, warm, everyday conversational sentence in Hinglish or Hindi. ' +
+        'Never use robotic terms or acronyms like J.A.R.V.I.S.',
     });
   }
 };
@@ -39,7 +39,7 @@ export const generateAiCallReply = async (callerText, conversationHistory = []) 
   }
 
   try {
-    const prompt = `Caller said: "${callerText}". Respond naturally as J.A.R.V.I.S call assistant in 1-2 brief sentences:`;
+    const prompt = `Caller said: "${callerText}". Respond naturally as Jarvis call assistant in 1 brief sentence:`;
     const result = await model.generateContent(prompt);
     const response = await result.response;
     const aiReply = response.text();
@@ -57,10 +57,11 @@ import { speakCallAudio, stopCallAudio } from './CallManager';
  */
 export const speakAiVoiceResponse = async (text, onDoneCallback) => {
   try {
-    const spokenNatively = await speakCallAudio(text);
+    const cleanText = text.replace(/J\.A\.R\.V\.I\.S/g, 'Jarvis');
+    const spokenNatively = await speakCallAudio(cleanText);
     if (!spokenNatively) {
       await Speech.stop();
-      Speech.speak(text, {
+      Speech.speak(cleanText, {
         language: 'en-US',
         pitch: 1.0,
         rate: 0.9,
@@ -91,21 +92,21 @@ export const stopAiVoiceResponse = async () => {
  */
 function getSmartFallbackReply(callerText) {
   if (!callerText) {
-    return 'Namaste! Main Rahul ka J.A.R.V.I.S AI Assistant bol raha hu. Rahul ji abhi busy hain, bataiye main kya sahayata kar sakta hu?';
+    return 'Namaste! Main Rahul ka assistant Jarvis bol raha hu. Rahul ji abhi busy hain, bataiye main kya message de du?';
   }
 
   const lower = callerText.toLowerCase();
 
   if (lower.includes('hello') || lower.includes('hi') || lower.includes('namaste') || lower.includes('suno') || lower.includes('haan')) {
-    return 'Namaste! Main Rahul ka J.A.R.V.I.S AI Assistant bol raha hu. Rahul ji abhi busy hain, bataiye main kya sahayata kar sakta hu?';
+    return 'Namaste! Main Rahul ka assistant Jarvis bol raha hu. Rahul ji abhi busy hain, bataiye main kya message de du?';
   } else if (lower.includes('kahan') || lower.includes('kidhar') || lower.includes('busy') || lower.includes('where')) {
-    return 'Rahul ji abhi zaroori meeting mein hain. Main unhe inform kar dunga ki aapka call aaya tha, koi message hai?';
+    return 'Rahul ji abhi meeting mein hain. Main unhe bata dunga ki aapka call aaya tha, koi message hai?';
   } else if (lower.includes('free') || lower.includes('kab') || lower.includes('wapas') || lower.includes('time')) {
-    return 'Ji, Rahul ji shaam tak free ho jayenge. Main unse keh dunga ki free hokar aapko call back kar lein.';
+    return 'Ji, Rahul ji thodi der mein free ho jayenge. Main unse keh dunga ki aapko call back kar lein.';
   } else if (lower.includes('urgent') || lower.includes('zaroori') || lower.includes('emergency') || lower.includes('jaldi')) {
-    return 'Ji main samajh gaya. Main abhi urgent notification alert Rahul ji ko bhej raha hu. Dhanyawad!';
+    return 'Ji main samajh gaya. Main abhi urgent alert Rahul ji ko bhej raha hu. Dhanyawad!';
   } else if (lower.includes('kaun') || lower.includes('who') || lower.includes('tum')) {
-    return 'Main Rahul ka autonomous AI Call Assistant J.A.R.V.I.S hu. Main unki incoming calls receive karta hu.';
+    return 'Main Rahul ka AI assistant Jarvis hu. Main unki calls receive karta hu.';
   } else {
     return 'Ji main samajh gaya. Main aapka ye message Rahul ji ko inform kar dunga. Dhanyawad!';
   }
