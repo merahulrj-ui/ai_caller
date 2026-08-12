@@ -18,6 +18,8 @@ import androidx.core.app.NotificationCompat
 
 class AiInCallService : InCallService() {
 
+  private var wakeLock: android.os.PowerManager.WakeLock? = null
+
   companion object {
     var instance: AiInCallService? = null
     var activeCall: Call? = null
@@ -65,13 +67,13 @@ class AiInCallService : InCallService() {
       val pm = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
       if (pm != null && !pm.isInteractive) {
         @Suppress("DEPRECATION")
-        val wl = pm.newWakeLock(
+        wakeLock = pm.newWakeLock(
           android.os.PowerManager.FULL_WAKE_LOCK or
           android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP or
           android.os.PowerManager.ON_AFTER_RELEASE,
-          "ai_caller:incoming_call_wake"
+          "ai_caller:incoming_call_wake_max"
         )
-        wl.acquire(5000)
+        wakeLock?.acquire(10000)
         logDebug(this, "SUCCESS: Woke up physical screen hardware for Lockscreen Banner!")
       }
     } catch (e: Throwable) {
@@ -89,7 +91,7 @@ class AiInCallService : InCallService() {
         val channel = NotificationChannel(
           channelId,
           "Incoming Call Banner",
-          NotificationManager.IMPORTANCE_HIGH
+          NotificationManager.IMPORTANCE_MAX
         ).apply {
           description = "Full screen notification for incoming calls"
           setBypassDnd(true)
@@ -252,8 +254,24 @@ class AiInCallService : InCallService() {
     try {
       super.onCallRemoved(call)
       logDebug(this, "onCallRemoved")
+      
+      // 1. Force Cancel Notifications (Fixes Orphaned Banner)
+      cancelCallNotification()
+      
+      // 2. Stop TTS Engine (Fixes Zombie TTS)
+      CallmanagerModule.stopNativeTtsEngine()
+      
       cancelAutoAnswerTimer()
       CallmanagerModule.stopRingtone(this)
+      
+      // 3. Release WakeLock early (Fixes Battery Drain)
+      try {
+        if (wakeLock?.isHeld == true) {
+          wakeLock?.release()
+          wakeLock = null
+          logDebug(this, "SUCCESS: WakeLock released early onCallRemoved")
+        }
+      } catch (e: Throwable) {}
       // CRITICAL FIX: Reset audio mode to NORMAL so speaker routing is restored for media playback
       try {
         val audioManager = getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager

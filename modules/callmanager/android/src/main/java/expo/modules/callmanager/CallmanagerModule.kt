@@ -26,10 +26,10 @@ import java.util.Locale
 class CallmanagerModule : Module() {
 
   private var phoneStateListener: PhoneStateListener? = null
-  private var tts: TextToSpeech? = null
   private var isTtsReady = false
 
   companion object {
+    var tts: TextToSpeech? = null
     var instance: CallmanagerModule? = null
     var ringtone: Ringtone? = null
 
@@ -62,6 +62,12 @@ class CallmanagerModule : Module() {
         ringtone?.stop()
         ringtone = null
         logDebug(context, "SUCCESS: Stopped native Ringtone playback")
+      } catch (e: Throwable) {}
+    }
+
+    fun stopNativeTtsEngine() {
+      try {
+        tts?.stop()
       } catch (e: Throwable) {}
     }
 
@@ -101,7 +107,7 @@ class CallmanagerModule : Module() {
         tts = TextToSpeech(context) { status ->
           if (status == TextToSpeech.SUCCESS) {
             isTtsReady = true
-            tts?.language = Locale.US
+            tts?.language = Locale("en", "IN") // Force Indian English for natural Hinglish
             tts?.setSpeechRate(0.92f)
             tts?.setPitch(1.0f)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
@@ -349,10 +355,16 @@ class CallmanagerModule : Module() {
 
     AsyncFunction("speakCallAudio") { text: String ->
       val context = appContext.reactContext ?: return@AsyncFunction false
-      // Sanitize ALL robotic acronym variations for natural human speech
-      val cleanText = text.replace(Regex("J[.\\-]?A[.\\-]?R[.\\-]?V[.\\-]?I[.\\-]?S", RegexOption.IGNORE_CASE), "Jarvis")
+      // Sanitize ALL robotic acronym variations and punctuation for natural human speech
+      val regex = Regex("[^a-zA-Z0-9 ]")
+      val cleanText = text.replace(Regex("(?i)j[.\\-]?a[.\\-]?r[.\\-]?v[.\\-]?i[.\\-]?s"), "Jarvis")
+                          .replace(regex, "")
       logDebug(context, "Attempting native speakCallAudio: $cleanText")
       try {
+        // Force Audio Mode to IN_CALL so TTS routes to uplink (caller) on all ROMs
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+        audioManager.mode = android.media.AudioManager.MODE_IN_CALL
+        
         initNativeTts(context)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
           tts?.speak(cleanText, TextToSpeech.QUEUE_FLUSH, null, "AiCallSpeech_${System.currentTimeMillis()}")

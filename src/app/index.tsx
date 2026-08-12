@@ -86,6 +86,7 @@ export default function HomeScreen() {
 
   // ── Refs ────────────────────────────────────────────────────────────────
   const isIncomingCallRef = useRef(false);
+  const manualAnswerFlag = useRef(false);
   const callStartTimeRef = useRef(null);
   const timerIntervalRef = useRef(null);
   const aiCountdownRef = useRef(null);
@@ -154,7 +155,7 @@ export default function HomeScreen() {
         }, 1000);
 
         // Jarvis greeting ONLY for incoming calls
-        if (wasIncoming && jarvisEnabled) {
+        if (wasIncoming && jarvisEnabled && !manualAnswerFlag.current) {
           await enableSpeakerphone(true);
           setIsSpeaker(true);
           startAiGreeting();
@@ -164,6 +165,7 @@ export default function HomeScreen() {
       async () => {
         setCallStatus('idle');
         isIncomingCallRef.current = false;
+        manualAnswerFlag.current = false;
         if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
         if (aiCountdownRef.current) clearInterval(aiCountdownRef.current);
         timerIntervalRef.current = null;
@@ -270,6 +272,7 @@ export default function HomeScreen() {
   };
 
   const handleAnswer = async () => {
+    manualAnswerFlag.current = true;
     if (aiCountdownRef.current) { clearInterval(aiCountdownRef.current); aiCountdownRef.current = null; }
     await answerCall();
     await enableSpeakerphone(true);
