@@ -60,14 +60,8 @@ class AiInCallService : InCallService() {
           try {
             super.onStateChanged(c, state)
             logDebug(this@AiInCallService, "Call Callback onStateChanged: $state")
-            if (state == Call.STATE_RINGING && isAiEnabled) {
-              try {
-                c.answer(VideoProfile.STATE_AUDIO_ONLY)
-                logDebug(this@AiInCallService, "SUCCESS: Answered via Callback!")
-                bringAppToForeground()
-              } catch (e: Throwable) {
-                logDebug(this@AiInCallService, "ERROR in Callback answer: ${e.message}")
-              }
+            if (state == Call.STATE_RINGING) {
+              bringAppToForeground()
             }
           } catch (e: Throwable) {
             logDebug(this@AiInCallService, "Callback onStateChanged error: ${e.message}")
@@ -77,19 +71,8 @@ class AiInCallService : InCallService() {
       call.registerCallback(callback)
 
       if (call.state == Call.STATE_RINGING) {
-        logDebug(this, "RINGING call detected in InCallService!")
-        if (isAiEnabled) {
-          logDebug(this, "AI is ACTIVE! Answering call via Telecom Call.answer()...")
-          try {
-            call.answer(VideoProfile.STATE_AUDIO_ONLY)
-            logDebug(this, "SUCCESS: Call.answer(STATE_AUDIO_ONLY) executed!")
-            bringAppToForeground()
-          } catch (e: Throwable) {
-            logDebug(this, "ERROR answering call in InCallService: ${e.javaClass.simpleName} - ${e.message}")
-          }
-        } else {
-          logDebug(this, "AI is OFFLINE. Skipping auto-answer.")
-        }
+        logDebug(this, "RINGING call detected in InCallService! Bringing UI to foreground for Banner Overlay...")
+        bringAppToForeground()
       }
     } catch (e: Throwable) {
       logDebug(this, "FATAL CATCH in onCallAdded: ${e.javaClass.simpleName} - ${e.message}")
