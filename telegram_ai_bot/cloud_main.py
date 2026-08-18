@@ -21,6 +21,10 @@ class DummyHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"Bot is alive and running!")
 
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
+
 def run_server():
     port = int(os.environ.get("PORT", 10000))
     server_address = ('0.0.0.0', port)
