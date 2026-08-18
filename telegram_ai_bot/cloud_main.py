@@ -2,12 +2,35 @@ import os
 import sys
 import json
 import random
+import time
 import asyncio
+import logging
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from dotenv import load_dotenv
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 from google import genai
 from google.genai import types
+
+# --- DUMMY WEB SERVER FOR RENDER (FREE TIER) ---
+class DummyHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b"Bot is alive and running!")
+
+def run_server():
+    port = int(os.environ.get("PORT", 10000))
+    server_address = ('0.0.0.0', port)
+    httpd = HTTPServer(server_address, DummyHandler)
+    httpd.serve_forever()
+
+server_thread = threading.Thread(target=run_server)
+server_thread.daemon = True
+server_thread.start()
+# -----------------------------------------------
 
 load_dotenv()
 
